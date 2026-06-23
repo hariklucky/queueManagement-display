@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-primary: #165dff;
+  --color-secondary: #f5f5f5;
+  --font-sans: 'Noto Sans SC', sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.card-shadow {
+  box-shadow:
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}

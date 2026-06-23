@@ -1,0 +1,78 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "营业厅排队预约服务接口文档",
+    "description": "svr-businesshall-devqueue 在线接口文档与调试页面",
+    "contact": {
+      "name": "devqueue"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://8082.way2free.eu.org:443",
+      "description": "Inferred Url"
+    }
+  ],
+  "paths": {
+    "/api/svr-businesshall-devqueue/terminal/appointment/query": {
+      "post": {
+        "tags": [
+          "现场终端接口"
+        ],
+        "summary": "查询可取号预约",
+        "description": "互动单元将身份证读取结果或手机号传入，本服务返回客户在当前营业厅可用于预约取号的预约记录。",
+        "operationId": "queryAppointmentsUsingPOST",
+        "parameters": [
+          {
+            "name": "X-Business-Hall-Id",
+            "in": "header",
+            "description": "营业厅ID；请求体未传 businessHallId 时使用",
+            "required": false,
+            "allowReserved": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminalAppointmentQueryDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功；Result.code=0 表示业务成功，Result.code=1/-1 表示业务失败或服务异常",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result«TerminalAppointmentQueryVO»"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "extensions": {
+          "x-order": "2147483647"
+        }
+      }
+    }
+  },
+  "components": {}
+}

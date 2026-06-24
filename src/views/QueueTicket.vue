@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import {
   createWalkinTicket,
   getAppointmentTicketByIdCard,
@@ -7,21 +7,25 @@ import {
   getApiErrorMessage,
   getResponseErrorMessage,
   getResponsePayload,
+  initTerminal,
   isApiSuccess,
+  mapBusinessTypes,
   mapTicketResult,
 } from '../api/queue'
 import type { ApiResponse, TicketApiData } from '../api/queue.types'
 import { readIdCard } from '../utils/idCardReader'
 import type { IdCardInfo } from '../utils/idCardReader.types'
 import { printTicket } from '../utils/ticketPrinter'
+import { setBusinessHallId } from '../utils/terminalContext'
 import {
-  BUSINESS_TYPES,
   DEFAULT_TICKET_RESULT,
+  type BusinessTypeOption,
   type PageType,
   type TicketDisplayData,
 } from './queueTicket.types'
 
-const businessTypes = BUSINESS_TYPES
+const businessTypes = ref<BusinessTypeOption[]>([])
+const initLoading = ref(false)
 
 const currentPage = ref<PageType>('home')
 const resultSuccess = ref(true)
@@ -40,6 +44,43 @@ const businessType = ref('')
 const scanWalkinLoading = ref(false)
 const submitLoading = ref(false)
 const phoneLookupLoading = ref(false)
+
+async function loadTerminalInit() {
+  const gatewayId = import.meta.env.VITE_GATEWAY_ID?.trim()
+  if (!gatewayId) {
+    alert('未配置终端设备编号（VITE_GATEWAY_ID），无法加载业务类型')
+    return
+  }
+  if (initLoading.value) return
+
+  initLoading.value = true
+
+  try {
+    const res = await initTerminal(gatewayId)
+    // const res = await initTerminal()
+
+    if (isApiSuccess(res)) {
+      const data = getResponsePayload(res)
+      businessTypes.value = mapBusinessTypes(data)
+
+      const businessHallId = data.result?.businessHallId ?? data.businessHallId
+
+      if (businessHallId) {
+        setBusinessHallId(String(businessHallId))
+      }
+
+     
+    } else {
+      alert(getResponseErrorMessage(res, '终端初始化失败，请检查设备编号或联系工作人员'))
+    }
+  } catch (error) {
+    alert(getApiErrorMessage(error as Error, '终端初始化失败，请检查网络后重试'))
+  } finally {
+    initLoading.value = false
+  }
+}
+
+onMounted(loadTerminalInit)
 
 function goBackHome() {
   currentPage.value = 'home'
@@ -405,11 +446,14 @@ async function handleWalkinSubmit() {
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                   <i class="fas fa-briefcase"></i>
                 </span>
-                <select
+                <input
                   v-model="businessType"
-                  class="w-full appearance-none rounded-xl border border-gray-300 bg-white py-3 pl-10 pr-10 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/50"
-                >
-                  <option value="">请选择办理业务类型</option>
+                  class="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/50"
+                  :disabled="initLoading"
+                  list="businessTypesList"
+                  placeholder="请选择或输入业务类型"
+                />
+                <datalist id="businessTypesList">
                   <option
                     v-for="item in businessTypes"
                     :key="item.value"
@@ -417,12 +461,7 @@ async function handleWalkinSubmit() {
                   >
                     {{ item.label }}
                   </option>
-                </select>
-                <span
-                  class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                >
-                  <i class="fas fa-chevron-down"></i>
-                </span>
+                </datalist>
               </div>
             </div>
 

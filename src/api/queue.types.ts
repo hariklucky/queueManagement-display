@@ -1,4 +1,3 @@
-import type { BusinessTypeValue } from '../views/queueTicket.types'
 import type { TicketDisplayData } from '../views/queueTicket.types'
 
 /** 通用接口响应结构 */
@@ -49,9 +48,53 @@ export type AppointmentQueryRequest =
 /** 现场取号入参 */
 export interface WalkinTicketRequest {
   customerName: string
-  businessType: BusinessTypeValue | string
+  businessType: string
   customerNumber?: string
   customerPhone?: string
+}
+
+/** 终端初始化 - 业务类型项 */
+export interface TerminalBusinessTypeItem {
+  businessType?: string
+  businessTypeCode?: string
+  businessTypeName?: string
+  code?: string
+  name?: string
+  value?: string
+  label?: string
+  id?: string | number
+  type?: string
+  typeCode?: string
+  typeName?: string
+  serviceCode?: string
+  serviceName?: string
+}
+
+/** 终端初始化响应数据 */
+export interface TerminalInitData {
+  gatewayId?: string
+  businessHallId?: string | number
+  businessHallName?: string
+  businessTypeList?: TerminalBusinessTypeItem[]
+  businessTypes?: TerminalBusinessTypeItem[]
+  businessList?: TerminalBusinessTypeItem[]
+  queueBusinessList?: TerminalBusinessTypeItem[]
+  terminalBusinessTypeList?: TerminalBusinessTypeItem[]
+  terminalBusinessTypes?: TerminalBusinessTypeItem[]
+  records?: TerminalBusinessTypeItem[]
+  list?: TerminalBusinessTypeItem[]
+  result?: {
+    businessHallId?: string | number
+    businessHallName?: string
+    businessTypeList?: TerminalBusinessTypeItem[]
+    businessTypes?: TerminalBusinessTypeItem[]
+    businessList?: TerminalBusinessTypeItem[]
+    queueBusinessList?: TerminalBusinessTypeItem[]
+    terminalBusinessTypeList?: TerminalBusinessTypeItem[]
+    terminalBusinessTypes?: TerminalBusinessTypeItem[]
+    records?: TerminalBusinessTypeItem[]
+    list?: TerminalBusinessTypeItem[]
+  }
 }
 
 export type { TicketDisplayData }

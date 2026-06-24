@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { RequestClient } from './request.types'
+import { getBusinessHallId } from './terminalContext'
 
 const instance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -7,7 +8,13 @@ const instance = axios.create({
 })
 
 instance.interceptors.request.use(
-  (config) => config,
+  (config) => {
+    const hallId = getBusinessHallId()
+    if (hallId) {
+      config.headers.set('X-Business-Hall-Id', hallId)
+    }
+    return config
+  },
   (error) => Promise.reject(error),
 )
 

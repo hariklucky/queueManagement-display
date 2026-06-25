@@ -41,6 +41,7 @@ const username = ref('')
 const phone = ref('')
 const walkinIdCardInfo = ref<IdCardInfo | null>(null)
 const businessType = ref('')
+const businessTypeDisplay = ref('')
 const scanWalkinLoading = ref(false)
 const submitLoading = ref(false)
 const phoneLookupLoading = ref(false)
@@ -97,6 +98,7 @@ function resetWalkinForm() {
   phone.value = ''
   walkinIdCardInfo.value = null
   businessType.value = ''
+  businessTypeDisplay.value = ''
   scanWalkinLoading.value = false
   submitLoading.value = false
   phoneLookupLoading.value = false
@@ -139,6 +141,18 @@ function filterDigits(value: string) {
 
 function handleAppointmentPhoneInput() {
   appointmentPhone.value = filterDigits(appointmentPhone.value)
+}
+
+function handleBusinessTypeInput() {
+  const displayValue = businessTypeDisplay.value.trim()
+  const matchedItem = businessTypes.value.find((item) => item.label === displayValue)
+
+  businessType.value = matchedItem?.value || ''
+}
+
+function clearBusinessType() {
+  businessTypeDisplay.value = ''
+  businessType.value = ''
 }
 
 async function handleTicketSuccess(
@@ -271,6 +285,7 @@ async function handleWalkinSubmit() {
       businessType: businessValue,
       ...(customerNumber ? { customerNumber } : {}),
       ...(customerPhone ? { customerPhone } : {}),
+      ticketType:"01"
     })
 
     await handleTicketSuccess(res, '获取排队号失败，请重试')
@@ -447,20 +462,28 @@ async function handleWalkinSubmit() {
                   <i class="fas fa-briefcase"></i>
                 </span>
                 <input
-                  v-model="businessType"
-                  class="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/50"
+                  v-model="businessTypeDisplay"
+                  class="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-12 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/50"
                   :disabled="initLoading"
                   list="businessTypesList"
-                  placeholder="请选择或输入业务类型"
+                  placeholder="请选择业务类型"
+                  @input="handleBusinessTypeInput"
                 />
+                <button
+                  v-if="businessTypeDisplay"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed"
+                  type="button"
+                  :disabled="initLoading"
+                  @click="clearBusinessType"
+                >
+                  <i class="fas fa-times-circle"></i>
+                </button>
                 <datalist id="businessTypesList">
                   <option
                     v-for="item in businessTypes"
                     :key="item.value"
-                    :value="item.value"
-                  >
-                    {{ item.label }}
-                  </option>
+                    :value="item.label"
+                  />
                 </datalist>
               </div>
             </div>

@@ -4,6 +4,7 @@ import type { IdCardInfo } from '../utils/idCardReader.types'
 import type {
   ApiResponse,
   AppointmentQueryRequest,
+  TerminalBusinessTypeItem,
   TerminalInitData,
   TicketApiData,
   TicketDisplayData,
@@ -27,7 +28,9 @@ export function queryAppointmentTicket(data: AppointmentQueryRequest) {
  */
 export function getAppointmentTicketByIdCard(idCardInfo: IdCardInfo) {
   return queryAppointmentTicket({
+    customerName: idCardInfo.name,
     customerNumber: idCardInfo.idNumber,
+    queryType: 'ID_CARD',
   })
 }
 
@@ -35,7 +38,7 @@ export function getAppointmentTicketByIdCard(idCardInfo: IdCardInfo) {
  * 预约取号 - 根据手机号查询
  */
 export function getAppointmentTicketByPhone(phone: string) {
-  return queryAppointmentTicket({ customerPhone: phone })
+  return queryAppointmentTicket({ customerPhone: phone, queryType: 'PHONE' })
 }
 
 /**
@@ -49,12 +52,27 @@ export function initTerminal(gatewayId: string) {
   )
 }
 
+function flattenBusinessTypeItems(
+  items: NonNullable<TerminalInitData['businessTypes']> = [],
+): TerminalBusinessTypeItem[] {
+  return items.flatMap((item) => {
+    const children =
+      item.children?.filter((child) => Object.keys(child || {}).length > 0) || []
+
+    if (children.length > 0) {
+      return flattenBusinessTypeItems(children)
+    }
+
+    return [item]
+  })
+}
+
 /**
  * 将初始化接口返回的业务类型映射为下拉选项
  */
 export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOption[] {
   const payload = data.result || data
-  const list =
+  const sourceList =
     payload.businessTypeList ||
     payload.businessTypes ||
     payload.businessList ||
@@ -65,28 +83,18 @@ export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOptio
     payload.list ||
     []
 
+  const list: TerminalBusinessTypeItem[] = flattenBusinessTypeItems(sourceList)
+
   return list
-    .map((item) => ({
+    .map((item: TerminalBusinessTypeItem) => ({
       value:
-        item.businessType ||
         item.businessTypeCode ||
-        item.code ||
-        item.value ||
-        item.type ||
-        item.typeCode ||
-        item.serviceCode ||
         (item.id != null ? String(item.id) : ''),
       label:
         item.businessTypeName ||
-        item.name ||
-        item.label ||
-        item.typeName ||
-        item.serviceName ||
-        item.businessType ||
-        item.code ||
         '',
     }))
-    .filter((item) => item.value && item.label)
+    .filter((item: BusinessTypeOption) => item.value && item.label)
 }
 
 /**

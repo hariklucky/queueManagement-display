@@ -32,12 +32,15 @@ export interface TicketApiData {
 
 /** 预约取号 - 刷身份证入参 */
 export interface AppointmentQueryByIdCardRequest {
+  customerName: string,
   customerNumber: string
+  queryType: 'ID_CARD'
 }
 
 /** 预约取号 - 手机号入参 */
 export interface AppointmentQueryByPhoneRequest {
   customerPhone: string
+  queryType: 'PHONE'
 }
 
 /** 预约取号查询入参 */
@@ -51,6 +54,7 @@ export interface WalkinTicketRequest {
   businessType: string
   customerNumber?: string
   customerPhone?: string
+  ticketType?: string
 }
 
 /** 终端初始化 - 业务类型项 */
@@ -68,6 +72,7 @@ export interface TerminalBusinessTypeItem {
   typeName?: string
   serviceCode?: string
   serviceName?: string
+  children?: TerminalBusinessTypeItem[]
 }
 
 /** 终端初始化响应数据 */

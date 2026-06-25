@@ -11,14 +11,15 @@ import {
   isApiSuccess,
   mapBusinessTypes,
   mapTicketResult,
+  takeAppointmentTicket,
 } from '../api/queue'
-import type { ApiResponse, TicketApiData } from '../api/queue.types'
+import type { ApiResponse, AppointmentItem, TicketApiData } from '../api/queue.types'
 import { readIdCard } from '../utils/idCardReader'
 import type { IdCardInfo } from '../utils/idCardReader.types'
-import { printTicket } from '../utils/ticketPrinter'
 import { setBusinessHallId } from '../utils/terminalContext'
 import {
   DEFAULT_TICKET_RESULT,
+  type AppointmentDisplayData,
   type BusinessTypeOption,
   type PageType,
   type TicketDisplayData,
@@ -30,10 +31,19 @@ const initLoading = ref(false)
 const currentPage = ref<PageType>('home')
 const resultSuccess = ref(true)
 const errorMessage = ref('')
+const errorTitle = ref('未查询到预约信息')
 
 const resultData = reactive<TicketDisplayData>({ ...DEFAULT_TICKET_RESULT })
+const appointmentDetailData = reactive<AppointmentDisplayData>({
+  number: '',
+  business: '',
+  name: '',
+  phone: '',
+  time: '',
+})
 
 const appointmentPhone = ref('')
+const appointmentTakeLoading = ref(false)
 const scanIdLoading = ref(false)
 const queryLoading = ref(false)
 
@@ -89,6 +99,7 @@ function goBackHome() {
 
 function resetAppointmentForm() {
   appointmentPhone.value = ''
+  appointmentTakeLoading.value = false
   scanIdLoading.value = false
   queryLoading.value = false
 }
@@ -125,10 +136,26 @@ function showSuccessResult(data: TicketDisplayData) {
   currentPage.value = 'result'
 }
 
-function showErrorResult(message: string) {
+function showErrorResult(message: string, title = '未查询到预约信息') {
   errorMessage.value = message
+  errorTitle.value = title
   resultSuccess.value = false
   currentPage.value = 'result'
+}
+
+function showAppointmentDetail(appointment: AppointmentItem) {
+  const matchedBusiness = businessTypes.value.find((item) => item.value === appointment.businessType)
+
+  appointmentDetailData.number = appointment.appointmentId || '--'
+  appointmentDetailData.business = matchedBusiness?.label || appointment.businessType || '--'
+  appointmentDetailData.name = appointment.customerName || '--'
+  appointmentDetailData.phone = appointment.customerPhone || '--'
+  appointmentDetailData.time =
+    appointment.appointmentDate && appointment.appointmentStartTime && appointment.appointmentEndTime
+      ? `${appointment.appointmentDate} ${appointment.appointmentStartTime} - ${appointment.appointmentEndTime}`
+      : appointment.appointmentDate || '--'
+
+  currentPage.value = 'appointmentDetail'
 }
 
 function validatePhone(phoneNumber: string) {
@@ -155,21 +182,45 @@ function clearBusinessType() {
   businessType.value = ''
 }
 
+function formatResultTime(value: string) {
+  if (!value) return '--'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+}
+
 async function handleTicketSuccess(
   res: ApiResponse<TicketApiData> | TicketApiData,
   fallbackMessage: string,
+  fallbackName = '',
 ) {
   if (isApiSuccess(res)) {
-    const ticketData = mapTicketResult(getResponsePayload(res))
+    const ticketData = mapTicketResult(getResponsePayload(res), businessTypes.value)
+
+    if (!ticketData.name && fallbackName) {
+      ticketData.name = fallbackName
+    }
+
     showSuccessResult(ticketData)
 
-    try {
-      await printTicket(ticketData)
-    } catch (error) {
-      alert(getApiErrorMessage(error as Error, '取号成功，但小票打印失败，请联系工作人员'))
-    }
+    // try {
+    //   await printTicket(ticketData)
+    // } catch (error) {
+    //   alert(getApiErrorMessage(error as Error, '取号成功，但小票打印失败，请联系工作人员'))
+    // }
   } else {
-    showErrorResult(getResponseErrorMessage(res, fallbackMessage))
+    showErrorResult(getResponseErrorMessage(res, fallbackMessage), '取号失败')
   }
 }
 
@@ -177,7 +228,45 @@ async function handleAppointmentQueryResult(
   res: ApiResponse<TicketApiData> | TicketApiData,
   fallbackMessage: string,
 ) {
+  const payload = getResponsePayload(res)
+  if (Array.isArray(payload.appointments)) {
+    if (payload.appointments.length === 0) {
+      showErrorResult(fallbackMessage)
+      return
+    }
+
+    showAppointmentDetail(payload.appointments[0])
+    return
+  }
+
   await handleTicketSuccess(res, fallbackMessage)
+}
+
+async function handleAppointmentTakeTicket() {
+  if (appointmentTakeLoading.value) return
+
+  if (!appointmentDetailData.number || appointmentDetailData.number === '--') {
+    alert('未获取到预约编号，无法取号')
+    return
+  }
+
+  appointmentTakeLoading.value = true
+
+  try {
+    const res = await takeAppointmentTicket({
+      appointmentId: appointmentDetailData.number,
+      ticketType: '00',
+    })
+    await handleTicketSuccess(res, getResponseErrorMessage(res, '预约取号失败，请重试'), appointmentDetailData.name)
+  } catch (error) {
+    showErrorResult(getApiErrorMessage(error as Error, '预约取号失败，请重试'), '取号失败')
+  } finally {
+    appointmentTakeLoading.value = false
+  }
+}
+
+function goBackAppointmentQuery() {
+  currentPage.value = 'appointment'
 }
 
 async function handleScanId() {
@@ -285,12 +374,11 @@ async function handleWalkinSubmit() {
       businessType: businessValue,
       ...(customerNumber ? { customerNumber } : {}),
       ...(customerPhone ? { customerPhone } : {}),
-      ticketType:"01"
+      ticketType: '01',
     })
-
-    await handleTicketSuccess(res, '获取排队号失败，请重试')
+    await handleTicketSuccess(res, res.errMsg || '获取排队号失败，请重试', customerName)
   } catch (error) {
-    showErrorResult(getApiErrorMessage(error as Error, '获取排队号失败，请重试'))
+    showErrorResult(getApiErrorMessage(error as Error, '获取排队号失败，请重试'), '取号失败')
   } finally {
     submitLoading.value = false
   }
@@ -404,6 +492,61 @@ async function handleWalkinSubmit() {
             >
               <i v-if="queryLoading" class="fas fa-spinner fa-spin mr-2"></i>
               {{ queryLoading ? '查询中...' : '查询预约' }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 预约信息确认 -->
+      <section v-else-if="currentPage === 'appointmentDetail'">
+        <div class="card-shadow mx-auto max-w-2xl rounded-2xl bg-white p-8">
+          <div class="mb-8 flex items-center">
+            <button
+              class="mr-4 text-xl text-gray-600"
+              @click="goBackAppointmentQuery"
+            >
+              <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2 class="text-2xl font-bold text-gray-800">预约信息</h2>
+          </div>
+
+          <div class="mb-8 rounded-2xl bg-gray-50 p-6 text-left space-y-4">
+            <p class="text-gray-700">
+              <span class="font-medium">预约编号：</span>
+              <span>{{ appointmentDetailData.number }}</span>
+            </p>
+            <p class="text-gray-700">
+              <span class="font-medium">业务类型：</span>
+              <span>{{ appointmentDetailData.business }}</span>
+            </p>
+            <p class="text-gray-700">
+              <span class="font-medium">姓名：</span>
+              <span>{{ appointmentDetailData.name }}</span>
+            </p>
+            <p class="text-gray-700">
+              <span class="font-medium">手机号：</span>
+              <span>{{ appointmentDetailData.phone }}</span>
+            </p>
+            <p class="text-gray-700">
+              <span class="font-medium">预约时间：</span>
+              <span>{{ appointmentDetailData.time }}</span>
+            </p>
+          </div>
+
+          <div class="flex flex-col space-y-4">
+            <button
+              class="w-full rounded-xl bg-primary py-4 text-lg font-medium text-white disabled:cursor-not-allowed disabled:opacity-70"
+              :disabled="appointmentTakeLoading"
+              @click="handleAppointmentTakeTicket"
+            >
+              <i v-if="appointmentTakeLoading" class="fas fa-spinner fa-spin mr-2"></i>
+              {{ appointmentTakeLoading ? '获取中...' : '获取排队号' }}
+            </button>
+            <button
+              class="w-full rounded-xl border-2 border-primary py-4 text-lg font-medium text-primary"
+              @click="goBackAppointmentQuery"
+            >
+              返回查询页
             </button>
           </div>
         </div>
@@ -547,7 +690,7 @@ async function handleWalkinSubmit() {
               </p>
               <p class="mb-2 text-gray-700">
                 <span class="font-medium">预计等待时间：</span>
-                <span>{{ resultData.time }}</span>
+                <span>{{ formatResultTime(resultData.time) }}</span>
               </p>
               <p class="text-gray-700">
                 <span class="font-medium">姓名：</span>
@@ -563,7 +706,7 @@ async function handleWalkinSubmit() {
               >
                 <i class="fas fa-exclamation-circle text-5xl"></i>
               </div>
-              <h2 class="mb-2 text-2xl font-bold text-gray-800">未查询到预约信息</h2>
+              <h2 class="mb-2 text-2xl font-bold text-gray-800">{{ errorTitle }}</h2>
               <p class="text-gray-500">{{ errorMessage }}</p>
             </div>
 

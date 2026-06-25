@@ -10,6 +10,31 @@ export interface ApiResponse<T = TicketApiData> {
   queueNumber?: string
   number?: string
   queueNo?: string
+  errMsg?: string
+}
+
+/** 后端返回的小票内容 */
+export interface TicketContentData {
+  title?: string
+  queueNo?: string
+  businessType?: string
+  businessHallId?: string
+  waitNum?: number
+  takeTime?: string
+  tips?: string
+}
+
+/** 预约记录 */
+export interface AppointmentItem {
+  appointmentId?: string
+  businessHallId?: string
+  businessType?: string
+  customerNumber?: string
+  customerName?: string
+  customerPhone?: string
+  appointmentDate?: string
+  appointmentStartTime?: string
+  appointmentEndTime?: string
 }
 
 /** 后端返回的排队信息 */
@@ -17,14 +42,23 @@ export interface TicketApiData {
   queueNumber?: string
   number?: string
   queueNo?: string
+  queueId?: string
+  businessHallId?: string
   businessType?: string
   business?: string
   businessName?: string
+  ticketType?: string
+  status?: string
+  takeTime?: string
+  printable?: boolean
+  ticketContent?: TicketContentData
+  appointments?: AppointmentItem[]
   name?: string
   userName?: string
   customerName?: string
   waitingCount?: number
   waiting?: number
+  waitNum?: number
   waitTime?: string
   waitTimeText?: string
   estimatedWaitTime?: string
@@ -41,6 +75,12 @@ export interface AppointmentQueryByIdCardRequest {
 export interface AppointmentQueryByPhoneRequest {
   customerPhone: string
   queryType: 'PHONE'
+}
+
+/** 预约取号正式取号入参 */
+export interface AppointmentTakeTicketRequest {
+  appointmentId: string
+  ticketType: '00'
 }
 
 /** 预约取号查询入参 */

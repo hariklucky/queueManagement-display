@@ -4,6 +4,7 @@ import type { IdCardInfo } from '../utils/idCardReader.types'
 import type {
   ApiResponse,
   AppointmentQueryRequest,
+  AppointmentTakeTicketRequest,
   TerminalBusinessTypeItem,
   TerminalInitData,
   TicketApiData,
@@ -39,6 +40,16 @@ export function getAppointmentTicketByIdCard(idCardInfo: IdCardInfo) {
  */
 export function getAppointmentTicketByPhone(phone: string) {
   return queryAppointmentTicket({ customerPhone: phone, queryType: 'PHONE' })
+}
+
+/**
+ * 预约信息确认后正式取号
+ */
+export function takeAppointmentTicket(data: AppointmentTakeTicketRequest) {
+  return request.post<ApiResponse<TicketApiData>>(
+    '/queue-call/terminal/queue/take',
+    data,
+  )
 }
 
 /**
@@ -111,13 +122,52 @@ export function createWalkinTicket(data: WalkinTicketRequest) {
 /**
  * 将后端返回数据映射为页面展示格式
  */
-export function mapTicketResult(data: TicketApiData = {}): TicketDisplayData {
+export function mapTicketResult(
+  data: TicketApiData = {},
+  businessTypes: BusinessTypeOption[] = [],
+): TicketDisplayData {
+  const appointment = data.appointments?.[0]
+  const businessCode =
+    data.businessType ||
+    data.ticketContent?.businessType ||
+    appointment?.businessType ||
+    data.business ||
+    ''
+  const matchedBusiness = businessTypes.find((item) => item.value === businessCode)
+
   return {
-    number: data.queueNumber || data.number || data.queueNo || '',
-    business: data.businessType || data.business || data.businessName || '',
-    name: data.customerName || data.name || data.userName || '',
-    waiting: data.waitingCount ?? data.waiting ?? 0,
-    time: data.waitTime || data.waitTimeText || data.estimatedWaitTime || '',
+    number:
+      data.queueNumber ||
+      data.number ||
+      data.queueNo ||
+      data.ticketContent?.queueNo ||
+      appointment?.appointmentId ||
+      '',
+    business:
+      matchedBusiness?.label ||
+      data.businessName ||
+      data.business ||
+      data.ticketContent?.businessType ||
+      appointment?.businessType ||
+      data.businessType ||
+      '',
+    name: data.customerName || data.name || data.userName || appointment?.customerName || '',
+    waiting:
+      data.waitingCount ??
+      data.waiting ??
+      data.waitNum ??
+      data.ticketContent?.waitNum ??
+      0,
+    time:
+      data.waitTime ||
+      data.waitTimeText ||
+      data.estimatedWaitTime ||
+      data.takeTime ||
+      data.ticketContent?.takeTime ||
+      (appointment?.appointmentDate && appointment?.appointmentStartTime
+        ? `${appointment.appointmentDate} ${appointment.appointmentStartTime}`
+        : '') ||
+      '',
   }
 }
 
@@ -139,8 +189,8 @@ export function getResponseErrorMessage(
   res: ApiResponse<TicketApiData> | TicketApiData,
   fallback: string,
 ) {
-  if ('message' in res && res.message) {
-    return res.message
+  if ('errMsg' in res && res.errMsg) {
+    return res.errMsg
   }
 
   if ('msg' in res && res.msg) {

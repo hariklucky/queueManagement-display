@@ -20,36 +20,46 @@ export function normalizeIdCardInfo(raw: IdCardRawData = {}): IdCardInfo {
  * 优先使用宿主注入的 window.IdCardReader，否则请求本地读卡服务
  */
 export async function readIdCard(): Promise<IdCardInfo> {
-  if (window.IdCardReader?.read) {
-    const data = await window.IdCardReader.read()
-    return normalizeIdCardInfo(data)
+  // if (window.IdCardReader?.read) {
+  //   const data = await window.IdCardReader.read()
+  //   return normalizeIdCardInfo(data)
+  // }
+
+  // const readerUrl =
+  //   import.meta.env.VITE_ID_CARD_READER_URL || 'http://127.0.0.1:8989/api/ReadCard'
+
+  // const response = await fetch(readerUrl, {
+  //   method: 'GET',
+  //   headers: { 'Content-Type': 'application/json' },
+  // })
+
+  // if (!response.ok) {
+  //   throw new Error('身份证读卡器连接失败，请检查设备')
+  // }
+
+  // const data = (await response.json()) as IdCardRawData
+
+  // if (
+  //   data.result !== undefined &&
+  //   data.result !== 0 &&
+  //   data.result !== '0' &&
+  //   data.code !== 0 &&
+  //   data.code !== 200
+  // ) {
+  //   throw new Error(data.message || data.msg || '读取身份证失败，请重新放置身份证')
+  // }
+
+  // const idCardInfo = normalizeIdCardInfo(data)
+  const idCardInfo = {
+    idNumber: '441224200004212315',
+    name: "张三",
+    gender: "男",
+    nation: "china",
+    address: "null",
+    birthday: "null",
+    phone: "13813138888"
+
   }
-
-  const readerUrl =
-    import.meta.env.VITE_ID_CARD_READER_URL || 'http://127.0.0.1:8989/api/ReadCard'
-
-  const response = await fetch(readerUrl, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-  })
-
-  if (!response.ok) {
-    throw new Error('身份证读卡器连接失败，请检查设备')
-  }
-
-  const data = (await response.json()) as IdCardRawData
-
-  if (
-    data.result !== undefined &&
-    data.result !== 0 &&
-    data.result !== '0' &&
-    data.code !== 0 &&
-    data.code !== 200
-  ) {
-    throw new Error(data.message || data.msg || '读取身份证失败，请重新放置身份证')
-  }
-
-  const idCardInfo = normalizeIdCardInfo(data)
 
   if (!idCardInfo.idNumber) {
     throw new Error('未能读取到身份证号，请重新放置身份证')

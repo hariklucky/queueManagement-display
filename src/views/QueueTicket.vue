@@ -387,9 +387,9 @@ async function handleWalkinSubmit() {
 
 <template>
   <div class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div class="container mx-auto w-full max-w-6xl -translate-y-[108px] px-4">
+    <div class="container mx-auto w-full max-w-6xl -translate-y-[108px] px-4" v-if="currentPage === 'home'">
       <!-- 首页 -->
-      <section v-if="currentPage === 'home'">
+      <section>
         <header class="mb-10 text-center">
           <h1 class="mb-2 text-[clamp(2rem,5vw,3rem)] font-bold text-gray-800">
             智能排队叫号系统
@@ -435,9 +435,10 @@ async function handleWalkinSubmit() {
           </div>
         </div>
       </section>
-
+    </div>
+    <div class="container mx-auto w-full max-w-6xl px-4" v-else>
       <!-- 预约取号 -->
-      <section v-else-if="currentPage === 'appointment'">
+      <section v-if="currentPage === 'appointment'">
         <div class="card-shadow mx-auto max-w-2xl rounded-2xl bg-white p-8">
           <div class="mb-8 flex items-center">
             <button

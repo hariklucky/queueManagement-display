@@ -58,16 +58,16 @@ const phoneLookupLoading = ref(false)
 
 async function loadTerminalInit() {
   const gatewayId = import.meta.env.VITE_GATEWAY_ID?.trim()
-  if (!gatewayId) {
-    alert('未配置终端设备编号（VITE_GATEWAY_ID），无法加载业务类型')
-    return
-  }
+  // if (!gatewayId) {
+  //   alert('未配置终端设备编号（VITE_GATEWAY_ID），无法加载业务类型')
+  //   return
+  // }
   if (initLoading.value) return
 
   initLoading.value = true
 
   try {
-    const res = await initTerminal(gatewayId)
+    const res = await initTerminal(gatewayId || '')
     // const res = await initTerminal()
 
     if (isApiSuccess(res)) {

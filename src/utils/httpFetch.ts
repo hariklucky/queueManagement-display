@@ -30,16 +30,12 @@ function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
 }
 
 /**
- * 开发模式走 WebView fetch（走 Vite 代理）。
- * 生产 Tauri 走 Rust 原生 HTTP，避免 plugin-http 的 response.text() 挂起问题。
+ * 开发模式：WebView fetch（走 Vite 代理，Network 面板可见 /api 请求）。
+ * 生产 Tauri：Rust 原生 HTTP（Network 不显示真实 URL，请看 Console 的 [QMS] 日志）。
  */
 export async function appFetch(input: string, init?: RequestInit): Promise<Response> {
   if (import.meta.env.DEV || !isTauri()) {
     return fetch(input, init)
-  }
-
-  if (import.meta.env.VITE_APP_DEBUG === 'true') {
-    console.info('[QMS HTTP]', init?.method || 'GET', input)
   }
 
   const result = await invoke<NativeHttpResponse>('native_http_fetch', {
@@ -48,10 +44,6 @@ export async function appFetch(input: string, init?: RequestInit): Promise<Respo
     headers: normalizeHeaders(init?.headers),
     body: typeof init?.body === 'string' ? init.body : null,
   })
-
-  if (import.meta.env.VITE_APP_DEBUG === 'true') {
-    console.info('[QMS HTTP] 响应', result.status, result.body.slice(0, 200))
-  }
 
   return new Response(result.body, {
     status: result.status,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from "vue";
 import {
   createWalkinTicket,
   getAppointmentTicketByIdCard,
@@ -11,194 +11,215 @@ import {
   isApiSuccess,
   mapTicketResult,
   takeAppointmentTicket,
-} from '../api/queue'
-import type { ApiResponse, AppointmentItem, TicketApiData } from '../api/queue.types'
-import { readIdCard } from '../utils/idCardReader'
-import type { IdCardInfo } from '../utils/idCardReader.types'
-import { resolveGatewayId } from '../utils/deviceInfo'
-import { setTerminalInitData, terminalStore } from '../utils/terminalContext'
+} from "../api/queue";
+import type {
+  ApiResponse,
+  AppointmentItem,
+  TicketApiData,
+} from "../api/queue.types";
+import { readIdCard } from "../utils/idCardReader";
+import type { IdCardInfo } from "../utils/idCardReader.types";
+import { resolveGatewayId } from "../utils/deviceInfo";
+import { setTerminalInitData, terminalStore } from "../utils/terminalContext";
 import {
   DEFAULT_TICKET_RESULT,
   type AppointmentDisplayData,
   type PageType,
   type TicketDisplayData,
-} from './queueTicket.types'
+} from "./queueTicket.types";
 
-const businessTypes = computed(() => terminalStore.businessTypes)
-const initLoading = ref(false)
+const businessTypes = computed(() => terminalStore.businessTypes);
+const initLoading = ref(false);
 
-const currentPage = ref<PageType>('home')
-const resultSuccess = ref(true)
-const errorMessage = ref('')
-const errorTitle = ref('未查询到预约信息')
+const currentPage = ref<PageType>("home");
+const resultSuccess = ref(true);
+const errorMessage = ref("");
+const errorTitle = ref("未查询到预约信息");
 
-const resultData = reactive<TicketDisplayData>({ ...DEFAULT_TICKET_RESULT })
+const resultData = reactive<TicketDisplayData>({ ...DEFAULT_TICKET_RESULT });
 const appointmentDetailData = reactive<AppointmentDisplayData>({
-  number: '',
-  business: '',
-  name: '',
-  phone: '',
-  time: '',
-})
+  number: "",
+  business: "",
+  name: "",
+  phone: "",
+  time: "",
+});
 
-const appointmentPhone = ref('')
-const appointmentTakeLoading = ref(false)
-const scanIdLoading = ref(false)
-const queryLoading = ref(false)
+const appointmentPhone = ref("");
+const appointmentTakeLoading = ref(false);
+const scanIdLoading = ref(false);
+const queryLoading = ref(false);
 
-const username = ref('')
-const phone = ref('')
-const walkinIdCardInfo = ref<IdCardInfo | null>(null)
-const businessType = ref('')
-const businessTypeDisplay = ref('')
-const scanWalkinLoading = ref(false)
-const submitLoading = ref(false)
-const phoneLookupLoading = ref(false)
+const username = ref("");
+const phone = ref("");
+const walkinIdCardInfo = ref<IdCardInfo | null>(null);
+const businessType = ref("");
+const businessTypeDisplay = ref("");
+const scanWalkinLoading = ref(false);
+const submitLoading = ref(false);
+const phoneLookupLoading = ref(false);
 
 async function loadTerminalInit() {
-  if (initLoading.value) return
+  if (initLoading.value) return;
 
-  initLoading.value = true
+  initLoading.value = true;
 
   try {
     // const gatewayId = await resolveGatewayId()
-    const res = await initTerminal()
+    const res = await initTerminal();
 
     if (isApiSuccess(res)) {
-      const data = getResponsePayload(res)
-      setTerminalInitData(data, "")
+      const data = getResponsePayload(res);
+      setTerminalInitData(data, "");
     } else {
-      alert(getResponseErrorMessage(res, '终端初始化失败，请检查设备编号或联系工作人员'))
+      alert(
+        getResponseErrorMessage(
+          res,
+          "终端初始化失败，请检查设备编号或联系工作人员"
+        )
+      );
     }
   } catch (error) {
-    alert(getApiErrorMessage(error as Error, '终端初始化失败，请检查网络后重试'))
+    alert(
+      getApiErrorMessage(error as Error, "终端初始化失败，请检查网络后重试")
+    );
   } finally {
-    initLoading.value = false
+    initLoading.value = false;
   }
 }
 
-onMounted(loadTerminalInit)
+onMounted(loadTerminalInit);
 
 function goBackHome() {
-  currentPage.value = 'home'
+  currentPage.value = "home";
 }
 
 function resetAppointmentForm() {
-  appointmentPhone.value = ''
-  appointmentTakeLoading.value = false
-  scanIdLoading.value = false
-  queryLoading.value = false
+  appointmentPhone.value = "";
+  appointmentTakeLoading.value = false;
+  scanIdLoading.value = false;
+  queryLoading.value = false;
 }
 
 function resetWalkinForm() {
-  username.value = ''
-  phone.value = ''
-  walkinIdCardInfo.value = null
-  businessType.value = ''
-  businessTypeDisplay.value = ''
-  scanWalkinLoading.value = false
-  submitLoading.value = false
-  phoneLookupLoading.value = false
+  username.value = "";
+  phone.value = "";
+  walkinIdCardInfo.value = null;
+  businessType.value = "";
+  businessTypeDisplay.value = "";
+  scanWalkinLoading.value = false;
+  submitLoading.value = false;
+  phoneLookupLoading.value = false;
 }
 
 function goToAppointment() {
-  resetAppointmentForm()
-  currentPage.value = 'appointment'
+  resetAppointmentForm();
+  currentPage.value = "appointment";
 }
 
 function goToWalkin() {
-  resetWalkinForm()
-  currentPage.value = 'walkin'
+  resetWalkinForm();
+  currentPage.value = "walkin";
 }
 
 function goToWalkinFromError() {
-  resetWalkinForm()
-  currentPage.value = 'walkin'
+  resetWalkinForm();
+  currentPage.value = "walkin";
 }
 
 function showSuccessResult(data: TicketDisplayData) {
-  Object.assign(resultData, data)
-  resultSuccess.value = true
-  currentPage.value = 'result'
+  Object.assign(resultData, data);
+  resultSuccess.value = true;
+  currentPage.value = "result";
 }
 
-function showErrorResult(message: string, title = '未查询到预约信息') {
-  errorMessage.value = message
-  errorTitle.value = title
-  resultSuccess.value = false
-  currentPage.value = 'result'
+function showErrorResult(message: string, title = "未查询到预约信息") {
+  errorMessage.value = message;
+  errorTitle.value = title;
+  resultSuccess.value = false;
+  currentPage.value = "result";
 }
 
 function showAppointmentDetail(appointment: AppointmentItem) {
-  const matchedBusiness = businessTypes.value.find((item) => item.value === appointment.businessType)
+  const matchedBusiness = businessTypes.value.find(
+    (item) => item.value === appointment.businessType
+  );
 
-  appointmentDetailData.number = appointment.appointmentId || '--'
-  appointmentDetailData.business = matchedBusiness?.label || appointment.businessType || '--'
-  appointmentDetailData.name = appointment.customerName || '--'
-  appointmentDetailData.phone = appointment.customerPhone || '--'
+  appointmentDetailData.number = appointment.appointmentId || "--";
+  appointmentDetailData.business =
+    matchedBusiness?.label || appointment.businessType || "--";
+  appointmentDetailData.name = appointment.customerName || "--";
+  appointmentDetailData.phone = appointment.customerPhone || "--";
   appointmentDetailData.time =
-    appointment.appointmentDate && appointment.appointmentStartTime && appointment.appointmentEndTime
+    appointment.appointmentDate &&
+    appointment.appointmentStartTime &&
+    appointment.appointmentEndTime
       ? `${appointment.appointmentDate} ${appointment.appointmentStartTime} - ${appointment.appointmentEndTime}`
-      : appointment.appointmentDate || '--'
+      : appointment.appointmentDate || "--";
 
-  currentPage.value = 'appointmentDetail'
+  currentPage.value = "appointmentDetail";
 }
 
 function validatePhone(phoneNumber: string) {
-  return /^1[3-9]\d{9}$/.test(phoneNumber)
+  return /^1[3-9]\d{9}$/.test(phoneNumber);
 }
 
 function filterDigits(value: string) {
-  return value.replace(/\D/g, '')
+  return value.replace(/\D/g, "");
 }
 
 function handleAppointmentPhoneInput() {
-  appointmentPhone.value = filterDigits(appointmentPhone.value)
+  appointmentPhone.value = filterDigits(appointmentPhone.value);
 }
 
 function handleBusinessTypeInput() {
-  const displayValue = businessTypeDisplay.value.trim()
-  const matchedItem = businessTypes.value.find((item) => item.label === displayValue)
+  const displayValue = businessTypeDisplay.value.trim();
+  const matchedItem = businessTypes.value.find(
+    (item) => item.label === displayValue
+  );
 
-  businessType.value = matchedItem?.value || ''
+  businessType.value = matchedItem?.value || "";
 }
 
 function clearBusinessType() {
-  businessTypeDisplay.value = ''
-  businessType.value = ''
+  businessTypeDisplay.value = "";
+  businessType.value = "";
 }
 
 function formatResultTime(value: string) {
-  if (!value) return '--'
+  if (!value) return "--";
 
-  const date = new Date(value)
+  const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return value
+    return value;
   }
 
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  const seconds = String(date.getSeconds()).padStart(2, '0')
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
 
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 async function handleTicketSuccess(
   res: ApiResponse<TicketApiData> | TicketApiData,
   fallbackMessage: string,
-  fallbackName = '',
+  fallbackName = ""
 ) {
   if (isApiSuccess(res)) {
-    const ticketData = mapTicketResult(getResponsePayload(res), businessTypes.value)
+    const ticketData = mapTicketResult(
+      getResponsePayload(res),
+      businessTypes.value
+    );
 
     if (!ticketData.name && fallbackName) {
-      ticketData.name = fallbackName
+      ticketData.name = fallbackName;
     }
 
-    showSuccessResult(ticketData)
+    showSuccessResult(ticketData);
 
     // try {
     //   await printTicket(ticketData)
@@ -206,153 +227,169 @@ async function handleTicketSuccess(
     //   alert(getApiErrorMessage(error as Error, '取号成功，但小票打印失败，请联系工作人员'))
     // }
   } else {
-    showErrorResult(getResponseErrorMessage(res, fallbackMessage), '取号失败')
+    showErrorResult(getResponseErrorMessage(res, fallbackMessage), "取号失败");
   }
 }
 
 async function handleAppointmentQueryResult(
   res: ApiResponse<TicketApiData> | TicketApiData,
-  fallbackMessage: string,
+  fallbackMessage: string
 ) {
-  const payload = getResponsePayload(res)
+  const payload = getResponsePayload(res);
   if (Array.isArray(payload.appointments)) {
     if (payload.appointments.length === 0) {
-      showErrorResult(fallbackMessage)
-      return
+      showErrorResult(fallbackMessage);
+      return;
     }
 
-    showAppointmentDetail(payload.appointments[0])
-    return
+    showAppointmentDetail(payload.appointments[0]);
+    return;
   }
 
-  await handleTicketSuccess(res, fallbackMessage)
+  await handleTicketSuccess(res, fallbackMessage);
 }
 
 async function handleAppointmentTakeTicket() {
-  if (appointmentTakeLoading.value) return
+  if (appointmentTakeLoading.value) return;
 
-  if (!appointmentDetailData.number || appointmentDetailData.number === '--') {
-    alert('未获取到预约编号，无法取号')
-    return
+  if (!appointmentDetailData.number || appointmentDetailData.number === "--") {
+    alert("未获取到预约编号，无法取号");
+    return;
   }
 
-  appointmentTakeLoading.value = true
+  appointmentTakeLoading.value = true;
 
   try {
     const res = await takeAppointmentTicket({
       appointmentId: appointmentDetailData.number,
-      ticketType: '00',
-    })
-    await handleTicketSuccess(res, getResponseErrorMessage(res, '预约取号失败，请重试'), appointmentDetailData.name)
+      ticketType: "00",
+    });
+    await handleTicketSuccess(
+      res,
+      getResponseErrorMessage(res, "预约取号失败，请重试"),
+      appointmentDetailData.name
+    );
   } catch (error) {
-    showErrorResult(getApiErrorMessage(error as Error, '预约取号失败，请重试'), '取号失败')
+    showErrorResult(
+      getApiErrorMessage(error as Error, "预约取号失败，请重试"),
+      "取号失败"
+    );
   } finally {
-    appointmentTakeLoading.value = false
+    appointmentTakeLoading.value = false;
   }
 }
 
 function goBackAppointmentQuery() {
-  currentPage.value = 'appointment'
+  currentPage.value = "appointment";
 }
 
 async function handleScanId() {
-  if (scanIdLoading.value) return
+  if (scanIdLoading.value) return;
 
-  scanIdLoading.value = true
+  scanIdLoading.value = true;
 
   try {
-    const idCardInfo = await readIdCard()
-    const res = await getAppointmentTicketByIdCard(idCardInfo)
-    await handleAppointmentQueryResult(res, '未查询到您的预约信息，请进行现场取号')
+    const idCardInfo = await readIdCard();
+    const res = await getAppointmentTicketByIdCard(idCardInfo);
+    await handleAppointmentQueryResult(
+      res,
+      "未查询到您的预约信息，请进行现场取号"
+    );
   } catch (error) {
-    showErrorResult(getApiErrorMessage(error as Error, '读取身份证或查询预约失败，请重试'))
+    showErrorResult(
+      getApiErrorMessage(error as Error, "读取身份证或查询预约失败，请重试")
+    );
   } finally {
-    scanIdLoading.value = false
+    scanIdLoading.value = false;
   }
 }
 
 async function handleQueryAppointment() {
-  const phoneValue = appointmentPhone.value.trim()
+  const phoneValue = appointmentPhone.value.trim();
 
   if (!phoneValue) {
-    alert('请输入手机号码')
-    return
+    alert("请输入手机号码");
+    return;
   }
 
   if (!validatePhone(phoneValue)) {
-    alert('请输入正确的手机号码格式')
-    return
+    alert("请输入正确的手机号码格式");
+    return;
   }
 
-  if (queryLoading.value) return
+  if (queryLoading.value) return;
 
-  queryLoading.value = true
+  queryLoading.value = true;
 
   try {
-    const res = await getAppointmentTicketByPhone(phoneValue)
-    await handleAppointmentQueryResult(res, '暂未查询到对应手机号码的预约信息，请进行现场取号')
+    const res = await getAppointmentTicketByPhone(phoneValue);
+    await handleAppointmentQueryResult(
+      res,
+      "暂未查询到对应手机号码的预约信息，请进行现场取号"
+    );
   } catch (error) {
-    showErrorResult(getApiErrorMessage(error as Error, '查询预约失败，请重试'))
+    showErrorResult(getApiErrorMessage(error as Error, "查询预约失败，请重试"));
   } finally {
-    queryLoading.value = false
+    queryLoading.value = false;
   }
 }
 
 async function handleScanIdWalkin() {
-  if (scanWalkinLoading.value) return
+  if (scanWalkinLoading.value) return;
 
-  scanWalkinLoading.value = true
+  scanWalkinLoading.value = true;
 
   try {
-    const idCardInfo = await readIdCard()
+    const idCardInfo = await readIdCard();
 
-    walkinIdCardInfo.value = idCardInfo
-    username.value = idCardInfo.name
+    walkinIdCardInfo.value = idCardInfo;
+    username.value = idCardInfo.name;
 
     if (idCardInfo.phone) {
-      phone.value = filterDigits(idCardInfo.phone)
+      phone.value = filterDigits(idCardInfo.phone);
     }
 
     if (!idCardInfo.name) {
-      alert('未能读取到姓名，请重新放置身份证')
+      alert("未能读取到姓名，请重新放置身份证");
     }
   } catch (error) {
-    alert(getApiErrorMessage(error as Error, '读取身份证失败，请重新放置身份证'))
+    alert(
+      getApiErrorMessage(error as Error, "读取身份证失败，请重新放置身份证")
+    );
   } finally {
-    scanWalkinLoading.value = false
+    scanWalkinLoading.value = false;
   }
 }
 
-
 async function handleWalkinSubmit() {
-  const customerName = username.value.trim()
-  const customerPhone = phone.value.trim()
-  const customerNumber = walkinIdCardInfo.value?.idNumber?.trim() || ''
-  const businessValue = businessType.value
+  const customerName = username.value.trim();
+  const customerPhone = phone.value.trim();
+  const customerNumber = walkinIdCardInfo.value?.idNumber?.trim() || "";
+  const businessValue = businessType.value;
 
   if (!customerName) {
-    alert('请输入用户名')
-    return
+    alert("请输入用户名");
+    return;
   }
 
   if (!businessValue) {
-    alert('请选择办理业务类型')
-    return
+    alert("请选择办理业务类型");
+    return;
   }
 
   if (!customerNumber && !customerPhone) {
-    alert('请刷身份证或输入手机号码')
-    return
+    alert("请刷身份证或输入手机号码");
+    return;
   }
 
   if (customerPhone && !validatePhone(customerPhone)) {
-    alert('请输入正确的手机号码格式')
-    return
+    alert("请输入正确的手机号码格式");
+    return;
   }
 
-  if (submitLoading.value) return
+  if (submitLoading.value) return;
 
-  submitLoading.value = true
+  submitLoading.value = true;
 
   try {
     const res = await createWalkinTicket({
@@ -360,20 +397,32 @@ async function handleWalkinSubmit() {
       businessType: businessValue,
       ...(customerNumber ? { customerNumber } : {}),
       ...(customerPhone ? { customerPhone } : {}),
-      ticketType: '01',
-    })
-    await handleTicketSuccess(res, res.errMsg || '获取排队号失败，请重试', customerName)
+      ticketType: "01",
+    });
+    await handleTicketSuccess(
+      res,
+      res.errMsg || "获取排队号失败，请重试",
+      customerName
+    );
   } catch (error) {
-    showErrorResult(getApiErrorMessage(error as Error, '获取排队号失败，请重试'), '取号失败')
+    showErrorResult(
+      getApiErrorMessage(error as Error, "获取排队号失败，请重试"),
+      "取号失败"
+    );
   } finally {
-    submitLoading.value = false
+    submitLoading.value = false;
   }
 }
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div class="container mx-auto w-full max-w-6xl -translate-y-[108px] px-4" v-if="currentPage === 'home'">
+  <div
+    class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
+  >
+    <div
+      class="container mx-auto w-full max-w-6xl -translate-y-[108px] px-4"
+      v-if="currentPage === 'home'"
+    >
       <!-- 首页 -->
       <section>
         <header class="mb-10 text-center">
@@ -384,9 +433,7 @@ async function handleWalkinSubmit() {
         </header>
 
         <div class="grid gap-8 md:grid-cols-2">
-          <div
-            class="card-shadow rounded-2xl bg-white p-10 text-center"
-          >
+          <div class="card-shadow rounded-2xl bg-white p-10 text-center">
             <div
               class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10"
             >
@@ -402,9 +449,7 @@ async function handleWalkinSubmit() {
             </button>
           </div>
 
-          <div
-            class="card-shadow rounded-2xl bg-white p-10 text-center"
-          >
+          <div class="card-shadow rounded-2xl bg-white p-10 text-center">
             <div
               class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10"
             >
@@ -427,10 +472,7 @@ async function handleWalkinSubmit() {
       <section v-if="currentPage === 'appointment'">
         <div class="card-shadow mx-auto max-w-2xl rounded-2xl bg-white p-8">
           <div class="mb-8 flex items-center">
-            <button
-              class="mr-4 text-xl text-gray-600"
-              @click="goBackHome"
-            >
+            <button class="mr-4 text-xl text-gray-600" @click="goBackHome">
               <i class="fas fa-arrow-left"></i>
             </button>
             <h2 class="text-2xl font-bold text-gray-800">预约取号</h2>
@@ -449,7 +491,9 @@ async function handleWalkinSubmit() {
               >
                 <template v-if="scanIdLoading">
                   <i class="fas fa-spinner fa-spin text-xl text-primary"></i>
-                  <span class="ml-2 font-medium text-gray-700">正在读取身份证信息...</span>
+                  <span class="ml-2 font-medium text-gray-700"
+                    >正在读取身份证信息...</span
+                  >
                 </template>
                 <template v-else>
                   <i class="fas fa-id-card text-xl text-primary"></i>
@@ -458,7 +502,9 @@ async function handleWalkinSubmit() {
               </button>
 
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <span
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                >
                   <i class="fas fa-phone"></i>
                 </span>
                 <input
@@ -478,7 +524,7 @@ async function handleWalkinSubmit() {
               @click="handleQueryAppointment"
             >
               <i v-if="queryLoading" class="fas fa-spinner fa-spin mr-2"></i>
-              {{ queryLoading ? '查询中...' : '查询预约' }}
+              {{ queryLoading ? "查询中..." : "查询预约" }}
             </button>
           </div>
         </div>
@@ -526,8 +572,11 @@ async function handleWalkinSubmit() {
               :disabled="appointmentTakeLoading"
               @click="handleAppointmentTakeTicket"
             >
-              <i v-if="appointmentTakeLoading" class="fas fa-spinner fa-spin mr-2"></i>
-              {{ appointmentTakeLoading ? '获取中...' : '获取排队号' }}
+              <i
+                v-if="appointmentTakeLoading"
+                class="fas fa-spinner fa-spin mr-2"
+              ></i>
+              {{ appointmentTakeLoading ? "获取中..." : "获取排队号" }}
             </button>
             <button
               class="w-full rounded-xl border-2 border-primary py-4 text-lg font-medium text-primary"
@@ -543,10 +592,7 @@ async function handleWalkinSubmit() {
       <section v-else-if="currentPage === 'walkin'">
         <div class="card-shadow mx-auto max-w-2xl rounded-2xl bg-white p-8">
           <div class="mb-8 flex items-center">
-            <button
-              class="mr-4 text-xl text-gray-600"
-              @click="goBackHome"
-            >
+            <button class="mr-4 text-xl text-gray-600" @click="goBackHome">
               <i class="fas fa-arrow-left"></i>
             </button>
             <h2 class="text-2xl font-bold text-gray-800">现场取号</h2>
@@ -556,7 +602,9 @@ async function handleWalkinSubmit() {
             <div class="flex flex-col space-y-2">
               <label class="font-medium text-gray-700">用户名</label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <span
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                >
                   <i class="fas fa-user"></i>
                 </span>
                 <input
@@ -571,7 +619,9 @@ async function handleWalkinSubmit() {
             <div class="flex flex-col space-y-2">
               <label class="font-medium text-gray-700">电话号码</label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <span
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                >
                   <i class="fas fa-phone"></i>
                 </span>
                 <input
@@ -588,7 +638,9 @@ async function handleWalkinSubmit() {
             <div class="flex flex-col space-y-2">
               <label class="font-medium text-gray-700">办理业务类型</label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <span
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                >
                   <i class="fas fa-briefcase"></i>
                 </span>
                 <input
@@ -627,9 +679,17 @@ async function handleWalkinSubmit() {
               >
                 <i
                   class="mr-2"
-                  :class="scanWalkinLoading ? 'fas fa-spinner fa-spin' : 'fas fa-id-card'"
+                  :class="
+                    scanWalkinLoading
+                      ? 'fas fa-spinner fa-spin'
+                      : 'fas fa-id-card'
+                  "
                 ></i>
-                {{ scanWalkinLoading ? '正在读取身份证信息...' : '刷身份证自动填写' }}
+                {{
+                  scanWalkinLoading
+                    ? "正在读取身份证信息..."
+                    : "刷身份证自动填写"
+                }}
               </button>
             </div>
 
@@ -639,7 +699,7 @@ async function handleWalkinSubmit() {
               :disabled="submitLoading"
             >
               <i v-if="submitLoading" class="fas fa-spinner fa-spin mr-2"></i>
-              {{ submitLoading ? '正在生成号码' : '获取排队号' }}
+              {{ submitLoading ? "正在生成号码" : "获取排队号" }}
             </button>
           </form>
         </div>
@@ -647,7 +707,9 @@ async function handleWalkinSubmit() {
 
       <!-- 取号结果 -->
       <section v-else-if="currentPage === 'result'">
-        <div class="card-shadow mx-auto max-w-2xl rounded-2xl bg-white p-10 text-center">
+        <div
+          class="card-shadow mx-auto max-w-2xl rounded-2xl bg-white p-10 text-center"
+        >
           <div v-if="resultSuccess">
             <div class="mb-6">
               <div
@@ -663,10 +725,14 @@ async function handleWalkinSubmit() {
               class="mb-6 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-8"
             >
               <p class="mb-2 text-gray-600">您的排队号码</p>
-              <p class="mb-4 text-6xl font-bold text-primary">{{ resultData.number }}</p>
+              <p class="mb-4 text-6xl font-bold text-primary">
+                {{ resultData.number }}
+              </p>
               <p class="text-gray-600">
                 当前等待人数:
-                <span class="font-semibold text-gray-800">{{ resultData.waiting }}</span>
+                <span class="font-semibold text-gray-800">{{
+                  resultData.waiting
+                }}</span>
               </p>
             </div>
 
@@ -693,7 +759,9 @@ async function handleWalkinSubmit() {
               >
                 <i class="fas fa-exclamation-circle text-5xl"></i>
               </div>
-              <h2 class="mb-2 text-2xl font-bold text-gray-800">{{ errorTitle }}</h2>
+              <h2 class="mb-2 text-2xl font-bold text-gray-800">
+                {{ errorTitle }}
+              </h2>
               <p class="text-gray-500">{{ errorMessage }}</p>
             </div>
 

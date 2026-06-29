@@ -1,6 +1,6 @@
-import request from '../utils/request'
-import type { BusinessTypeOption } from '../views/queueTicket.types'
-import type { IdCardInfo } from '../utils/idCardReader.types'
+import request from "../utils/request";
+import type { BusinessTypeOption } from "../views/queueTicket.types";
+import type { IdCardInfo } from "../utils/idCardReader.types";
 import type {
   ApiResponse,
   AppointmentQueryRequest,
@@ -10,7 +10,7 @@ import type {
   TicketApiData,
   TicketDisplayData,
   WalkinTicketRequest,
-} from './queue.types'
+} from "./queue.types";
 
 /**
  * 查询可取号预约
@@ -19,9 +19,9 @@ import type {
  */
 export function queryAppointmentTicket(data: AppointmentQueryRequest) {
   return request.post<ApiResponse<TicketApiData>>(
-    '/queue-call/terminal/appointment/query',
+    "/queue-call/terminal/appointment/query",
     data,
-  )
+  );
 }
 
 /**
@@ -31,15 +31,15 @@ export function getAppointmentTicketByIdCard(idCardInfo: IdCardInfo) {
   return queryAppointmentTicket({
     customerName: idCardInfo.name,
     customerNumber: idCardInfo.idNumber,
-    queryType: 'ID_CARD',
-  })
+    queryType: "ID_CARD",
+  });
 }
 
 /**
  * 预约取号 - 根据手机号查询
  */
 export function getAppointmentTicketByPhone(phone: string) {
-  return queryAppointmentTicket({ customerPhone: phone, queryType: 'PHONE' })
+  return queryAppointmentTicket({ customerPhone: phone, queryType: "PHONE" });
 }
 
 /**
@@ -47,9 +47,9 @@ export function getAppointmentTicketByPhone(phone: string) {
  */
 export function takeAppointmentTicket(data: AppointmentTakeTicketRequest) {
   return request.post<ApiResponse<TicketApiData>>(
-    '/queue-call/terminal/queue/take',
+    "/queue-call/terminal/queue/take",
     data,
-  )
+  );
 }
 
 /**
@@ -58,16 +58,18 @@ export function takeAppointmentTicket(data: AppointmentTakeTicketRequest) {
  */
 export function initTerminal() {
   return request.get<ApiResponse<TerminalInitData>>(
-    '/queue-call/terminal/init',
+    "/queue-call/terminal/init",
     // { params: { gatewayId } },
-  )
+  );
 }
 
 /**
  * 将初始化接口返回的业务类型映射为下拉选项
  */
-export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOption[] {
-  const payload = data.result || data
+export function mapBusinessTypes(
+  data: TerminalInitData = {},
+): BusinessTypeOption[] {
+  const payload = data.result || data;
   const list: TerminalBusinessTypeItem[] =
     payload.businessTypeList ||
     payload.businessTypes ||
@@ -77,18 +79,14 @@ export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOptio
     payload.terminalBusinessTypes ||
     payload.records ||
     payload.list ||
-    []
+    [];
 
   return list
     .map((item: TerminalBusinessTypeItem) => ({
-      value:
-        item.businessTypeCode ||
-        (item.id != null ? String(item.id) : ''),
-      label:
-        item.businessTypeName ||
-        '',
+      value: item.businessTypeCode || (item.id != null ? String(item.id) : ""),
+      label: item.businessTypeName || "",
     }))
-    .filter((item: BusinessTypeOption) => item.value && item.label)
+    .filter((item: BusinessTypeOption) => item.value && item.label);
 }
 
 /**
@@ -97,9 +95,9 @@ export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOptio
  */
 export function createWalkinTicket(data: WalkinTicketRequest) {
   return request.post<ApiResponse<TicketApiData>>(
-    '/queue-call/terminal/queue/take',
+    "/queue-call/terminal/queue/take",
     data,
-  )
+  );
 }
 
 /**
@@ -109,14 +107,16 @@ export function mapTicketResult(
   data: TicketApiData = {},
   businessTypes: readonly BusinessTypeOption[] = [],
 ): TicketDisplayData {
-  const appointment = data.appointments?.[0]
+  const appointment = data.appointments?.[0];
   const businessCode =
     data.businessType ||
     data.ticketContent?.businessType ||
     appointment?.businessType ||
     data.business ||
-    ''
-  const matchedBusiness = businessTypes.find((item) => item.value === businessCode)
+    "";
+  const matchedBusiness = businessTypes.find(
+    (item) => item.value === businessCode,
+  );
 
   return {
     number:
@@ -125,7 +125,7 @@ export function mapTicketResult(
       data.queueNo ||
       data.ticketContent?.queueNo ||
       appointment?.appointmentId ||
-      '',
+      "",
     business:
       matchedBusiness?.label ||
       data.businessName ||
@@ -133,8 +133,13 @@ export function mapTicketResult(
       data.ticketContent?.businessType ||
       appointment?.businessType ||
       data.businessType ||
-      '',
-    name: data.customerName || data.name || data.userName || appointment?.customerName || '',
+      "",
+    name:
+      data.customerName ||
+      data.name ||
+      data.userName ||
+      appointment?.customerName ||
+      "",
     waiting:
       data.waitingCount ??
       data.waiting ??
@@ -149,20 +154,20 @@ export function mapTicketResult(
       data.ticketContent?.takeTime ||
       (appointment?.appointmentDate && appointment?.appointmentStartTime
         ? `${appointment.appointmentDate} ${appointment.appointmentStartTime}`
-        : '') ||
-      '',
-  }
+        : "") ||
+      "",
+  };
 }
 
 /**
  * 提取接口中的业务数据
  */
 export function getResponsePayload<T>(res: ApiResponse<T> | T): T {
-  if (res && typeof res === 'object' && 'data' in res && res.data) {
-    return res.data
+  if (res && typeof res === "object" && "data" in res && res.data) {
+    return res.data;
   }
 
-  return res as T
+  return res as T;
 }
 
 /**
@@ -172,42 +177,44 @@ export function getResponseErrorMessage(
   res: ApiResponse<TicketApiData> | TicketApiData,
   fallback: string,
 ) {
-  if (!res || typeof res !== 'object') {
-    return fallback
+  if (!res || typeof res !== "object") {
+    return fallback;
   }
 
-  if ('errMsg' in res && res.errMsg) {
-    return res.errMsg
+  if ("errMsg" in res && res.errMsg) {
+    return res.errMsg;
   }
 
-  if ('msg' in res && res.msg) {
-    return res.msg
+  if ("msg" in res && res.msg) {
+    return res.msg;
   }
 
-  return fallback
+  return fallback;
 }
 
 /**
  * 判断接口业务是否成功
  */
-export function isApiSuccess(res?: ApiResponse<unknown> | Record<string, unknown>) {
-  if (!res || typeof res !== 'object') {
-    return false
+export function isApiSuccess(
+  res?: ApiResponse<unknown> | Record<string, unknown>,
+) {
+  if (!res || typeof res !== "object") {
+    return false;
   }
 
-  if ('code' in res && (res.code === 0 || res.code === 200)) {
-    return true
+  if ("code" in res && (res.code === 0 || res.code === 200)) {
+    return true;
   }
 
-  if ('success' in res && res.success === true) {
-    return true
+  if ("success" in res && res.success === true) {
+    return true;
   }
 
-  if ('queueNumber' in res || 'number' in res || 'queueNo' in res) {
-    return !!(res.queueNumber || res.number || res.queueNo)
+  if ("queueNumber" in res || "number" in res || "queueNo" in res) {
+    return !!(res.queueNumber || res.number || res.queueNo);
   }
 
-  return false
+  return false;
 }
 
 /**
@@ -215,10 +222,15 @@ export function isApiSuccess(res?: ApiResponse<unknown> | Record<string, unknown
  */
 export function getApiErrorMessage(
   error: {
-    response?: { data?: { message?: string; msg?: string } }
-    message?: string
+    response?: { data?: { message?: string; msg?: string } };
+    message?: string;
   },
-  fallback = '操作失败，请重试',
+  fallback = "操作失败，请重试",
 ) {
-  return error?.response?.data?.message || error?.response?.data?.msg || error?.message || fallback
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.msg ||
+    error?.message ||
+    fallback
+  );
 }

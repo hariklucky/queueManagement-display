@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   createWalkinTicket,
   getAppointmentTicketByIdCard,
@@ -9,23 +9,22 @@ import {
   getResponsePayload,
   initTerminal,
   isApiSuccess,
-  mapBusinessTypes,
   mapTicketResult,
   takeAppointmentTicket,
 } from '../api/queue'
 import type { ApiResponse, AppointmentItem, TicketApiData } from '../api/queue.types'
 import { readIdCard } from '../utils/idCardReader'
 import type { IdCardInfo } from '../utils/idCardReader.types'
-import { setBusinessHallId } from '../utils/terminalContext'
+import { getGatewayId } from '../utils/deviceInfo'
+import { setTerminalInitData, terminalStore } from '../utils/terminalContext'
 import {
   DEFAULT_TICKET_RESULT,
   type AppointmentDisplayData,
-  type BusinessTypeOption,
   type PageType,
   type TicketDisplayData,
 } from './queueTicket.types'
 
-const businessTypes = ref<BusinessTypeOption[]>([])
+const businessTypes = computed(() => terminalStore.businessTypes)
 const initLoading = ref(false)
 
 const currentPage = ref<PageType>('home')
@@ -57,30 +56,17 @@ const submitLoading = ref(false)
 const phoneLookupLoading = ref(false)
 
 async function loadTerminalInit() {
-  const gatewayId = import.meta.env.VITE_GATEWAY_ID?.trim()
-  // if (!gatewayId) {
-  //   alert('未配置终端设备编号（VITE_GATEWAY_ID），无法加载业务类型')
-  //   return
-  // }
   if (initLoading.value) return
 
   initLoading.value = true
 
   try {
-    const res = await initTerminal(gatewayId || '')
-    // const res = await initTerminal()
+    const gatewayId = await getGatewayId()
+    const res = await initTerminal(gatewayId)
 
     if (isApiSuccess(res)) {
       const data = getResponsePayload(res)
-      businessTypes.value = mapBusinessTypes(data)
-
-      const businessHallId = data.result?.businessHallId ?? data.businessHallId
-
-      if (businessHallId) {
-        setBusinessHallId(String(businessHallId))
-      }
-
-     
+      setTerminalInitData(data, gatewayId)
     } else {
       alert(getResponseErrorMessage(res, '终端初始化失败，请检查设备编号或联系工作人员'))
     }

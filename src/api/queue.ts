@@ -107,7 +107,7 @@ export function createWalkinTicket(data: WalkinTicketRequest) {
  */
 export function mapTicketResult(
   data: TicketApiData = {},
-  businessTypes: BusinessTypeOption[] = [],
+  businessTypes: readonly BusinessTypeOption[] = [],
 ): TicketDisplayData {
   const appointment = data.appointments?.[0]
   const businessCode =

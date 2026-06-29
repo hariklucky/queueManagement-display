@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-native-http-fetch"
+description = "Allows native HTTP requests from the frontend."
+commands.allow = ["native_http_fetch"]

@@ -13,13 +13,7 @@
     "core:window:allow-set-size",
     "core:webview:allow-internal-toggle-devtools",
     "allow-touch-keyboard",
-    {
-      "identifier": "http:default",
-      "allow": [
-        { "url": "http://**" },
-        { "url": "https://**" }
-      ]
-    },
+    "allow-native-http-fetch",
     "shell:allow-open",
     "device-info:default"
   ]

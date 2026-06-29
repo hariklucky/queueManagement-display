@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "axios": "^1.18.0",
+    "@tauri-apps/plugin-http": "^2",
     "tauri-plugin-device-info-api": "^1.0.1",
     "vue": "^3.5.34"
   },

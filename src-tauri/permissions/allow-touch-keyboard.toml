@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-touch-keyboard"
+description = "Allows showing the Windows touch keyboard when an input is focused."
+commands.allow = ["show_touch_keyboard"]

@@ -13,6 +13,7 @@ interface ImportMetaEnv {
   readonly VITE_GATEWAY_ID?: string
   readonly VITE_ID_CARD_READER_URL?: string
   readonly VITE_TICKET_PRINTER_URL?: string
+  readonly VITE_APP_DEBUG?: string
   readonly TAURI_ENV_DEBUG?: string
   readonly TAURI_ENV_PLATFORM?: string
 }

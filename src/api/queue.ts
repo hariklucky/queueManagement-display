@@ -56,10 +56,10 @@ export function takeAppointmentTicket(data: AppointmentTakeTicketRequest) {
  * 终端设备初始化
  * 传入 gatewayId，获取营业厅及业务类型等信息
  */
-export function initTerminal(gatewayId: string) {
+export function initTerminal() {
   return request.get<ApiResponse<TerminalInitData>>(
     '/queue-call/terminal/init',
-    { params: { gatewayId } },
+    // { params: { gatewayId } },
   )
 }
 

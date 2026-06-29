@@ -1,4 +1,5 @@
 import type { TicketPrintData, TicketPrintPayload, TicketPrintResponse } from './ticketPrinter.types'
+import { appFetch } from './httpFetch'
 
 function formatPrintTime(date = new Date()) {
   return date.toLocaleString('zh-CN', { hour12: false })
@@ -55,7 +56,7 @@ export async function printTicket(ticket: TicketPrintData) {
   const printUrl =
     import.meta.env.VITE_TICKET_PRINTER_URL || 'http://127.0.0.1:8990/api/PrintTicket'
 
-  const response = await fetch(printUrl, {
+  const response = await appFetch(printUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

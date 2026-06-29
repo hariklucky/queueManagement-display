@@ -20,7 +20,8 @@
         "minHeight": 1024,
         "resizable": true,
         "fullscreen": true,
-        "center": true
+        "center": true,
+        "devtools": true
       }
     ],
     "security": {
@@ -46,7 +47,7 @@
     },
     "windows": {
       "webviewInstallMode": {
-        "type": "embedBootstrapper",
+        "type": "offlineInstaller",
         "silent": true
       },
       "wix": {

@@ -15,7 +15,7 @@ import {
 import type { ApiResponse, AppointmentItem, TicketApiData } from '../api/queue.types'
 import { readIdCard } from '../utils/idCardReader'
 import type { IdCardInfo } from '../utils/idCardReader.types'
-import { getGatewayId } from '../utils/deviceInfo'
+import { resolveGatewayId } from '../utils/deviceInfo'
 import { setTerminalInitData, terminalStore } from '../utils/terminalContext'
 import {
   DEFAULT_TICKET_RESULT,
@@ -61,12 +61,12 @@ async function loadTerminalInit() {
   initLoading.value = true
 
   try {
-    const gatewayId = await getGatewayId()
-    const res = await initTerminal(gatewayId)
+    // const gatewayId = await resolveGatewayId()
+    const res = await initTerminal()
 
     if (isApiSuccess(res)) {
       const data = getResponsePayload(res)
-      setTerminalInitData(data, gatewayId)
+      setTerminalInitData(data, "")
     } else {
       alert(getResponseErrorMessage(res, '终端初始化失败，请检查设备编号或联系工作人员'))
     }

@@ -11,6 +11,15 @@
     "core:window:allow-set-focus",
     "core:window:allow-set-fullscreen",
     "core:window:allow-set-size",
+    "core:webview:allow-internal-toggle-devtools",
+    "allow-touch-keyboard",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://**" },
+        { "url": "https://**" }
+      ]
+    },
     "shell:allow-open",
     "device-info:default"
   ]

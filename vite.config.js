@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_TARGET || 'http://127.0.0.1:8080'
   const shouldRewrite = env.VITE_API_PROXY_REWRITE === 'true'
+  const enableDebug =
+    !!process.env.TAURI_ENV_DEBUG || env.VITE_APP_DEBUG === 'true'
 
   return {
     plugins: [vue(), tailwindcss()],
@@ -42,8 +44,8 @@ export default defineConfig(({ mode }) => {
       // Vite 8 的 esbuild 降级无法处理 safari13 解构语法，需 >= safari14.1
       target:
         process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari14.1',
-      minify: process.env.TAURI_ENV_DEBUG ? false : true,
-      sourcemap: !!process.env.TAURI_ENV_DEBUG,
+      minify: !enableDebug,
+      sourcemap: enableDebug,
     },
   }
 })

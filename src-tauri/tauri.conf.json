@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "智能排队叫号系统",
+  "productName": "报到取号",
   "version": "0.1.0",
   "identifier": "com.qms.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "智能排队叫号系统",
+        "title": "报到取号",
         "width": 1280,
         "height": 1024,
         "minWidth": 1280,
@@ -24,13 +24,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' https://cdn.bootcdn.net https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; connect-src 'self' http://127.0.0.1:* http://localhost:* https://* ipc: http://ipc.localhost; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.bootcdn.net https://fonts.googleapis.com; font-src 'self' https://cdn.bootcdn.net https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' https://cdn.bootcdn.net https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; connect-src 'self' http: https: ipc: http://ipc.localhost; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.bootcdn.net https://fonts.googleapis.com; font-src 'self' https://cdn.bootcdn.net https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["msi"],
-    "shortDescription": "智能排队叫号系统",
+    "shortDescription": "报到取号",
     "longDescription": "面向营业厅现场终端的桌面取号应用，支持预约取号与现场取号，集成身份证读卡与小票打印能力。",
     "publisher": "QMS",
     "icon": [
@@ -40,6 +40,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "bundleName": "报到取号",
+      "infoPlist": "./Info.plist"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper",

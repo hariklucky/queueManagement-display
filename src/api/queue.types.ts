@@ -112,7 +112,6 @@ export interface TerminalBusinessTypeItem {
   typeName?: string
   serviceCode?: string
   serviceName?: string
-  children?: TerminalBusinessTypeItem[]
 }
 
 /** 终端初始化响应数据 */

@@ -63,27 +63,12 @@ export function initTerminal(gatewayId: string) {
   )
 }
 
-function flattenBusinessTypeItems(
-  items: NonNullable<TerminalInitData['businessTypes']> = [],
-): TerminalBusinessTypeItem[] {
-  return items.flatMap((item) => {
-    const children =
-      item.children?.filter((child) => Object.keys(child || {}).length > 0) || []
-
-    if (children.length > 0) {
-      return flattenBusinessTypeItems(children)
-    }
-
-    return [item]
-  })
-}
-
 /**
  * 将初始化接口返回的业务类型映射为下拉选项
  */
 export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOption[] {
   const payload = data.result || data
-  const sourceList =
+  const list: TerminalBusinessTypeItem[] =
     payload.businessTypeList ||
     payload.businessTypes ||
     payload.businessList ||
@@ -93,8 +78,6 @@ export function mapBusinessTypes(data: TerminalInitData = {}): BusinessTypeOptio
     payload.records ||
     payload.list ||
     []
-
-  const list: TerminalBusinessTypeItem[] = flattenBusinessTypeItems(sourceList)
 
   return list
     .map((item: TerminalBusinessTypeItem) => ({
@@ -189,6 +172,10 @@ export function getResponseErrorMessage(
   res: ApiResponse<TicketApiData> | TicketApiData,
   fallback: string,
 ) {
+  if (!res || typeof res !== 'object') {
+    return fallback
+  }
+
   if ('errMsg' in res && res.errMsg) {
     return res.errMsg
   }
@@ -204,7 +191,7 @@ export function getResponseErrorMessage(
  * 判断接口业务是否成功
  */
 export function isApiSuccess(res?: ApiResponse<unknown> | Record<string, unknown>) {
-  if (!res) {
+  if (!res || typeof res !== 'object') {
     return false
   }
 

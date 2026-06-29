@@ -18,8 +18,24 @@ instance.interceptors.request.use(
   (error) => Promise.reject(error),
 )
 
+function validateResponseData(data: unknown): unknown {
+  if (typeof data === 'string' && data.trimStart().startsWith('<!DOCTYPE')) {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+    throw new Error(
+      `接口返回了 HTML 页面而非 JSON，请检查 VITE_API_BASE_URL（当前：${baseURL}）。` +
+        '打包后的桌面应用不会走 Vite 代理，需配置为后端完整地址后重新构建。',
+    )
+  }
+
+  if (data != null && typeof data !== 'object') {
+    throw new Error('接口返回了非 JSON 数据，请检查后端地址与网络连接')
+  }
+
+  return data
+}
+
 instance.interceptors.response.use(
-  (response) => response.data,
+  (response) => validateResponseData(response.data) as any,
   (error) => Promise.reject(error),
 )
 

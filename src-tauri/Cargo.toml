@@ -1,7 +1,7 @@
 [package]
 name = "qms"
 version = "0.1.0"
-description = "智能排队叫号系统"
+description = "报到取号"
 authors = ["QMS"]
 edition = "2021"
 

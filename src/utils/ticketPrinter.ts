@@ -16,7 +16,7 @@ export function buildTicketContent(ticket: TicketPrintData = {
 }) {
   return [
     '================================',
-    '      智能排队叫号系统',
+    '         智能排队叫号系统',
     '================================',
     '',
     `排队号码：${ticket.number || '-'}`,

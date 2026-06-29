@@ -13,10 +13,12 @@
     "preview:prod": "vite preview --mode production",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build --bundles msi",
-    "tauri:bundle": "tauri bundle --bundles msi",
-    "tauri:bundle:msi": "tauri build --bundles msi",
-    "tauri:build:win": "tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles msi"
+    "tauri:build": "tauri build",
+    "tauri:bundle": "tauri bundle",
+    "tauri:bundle:msi": "tauri build",
+    "install:llvm-rc": "bash scripts/install-llvm-rc.sh",
+    "tauri:build:win": "bash scripts/build-win.sh",
+    "tauri:build:win:nobundle": "bash scripts/build-win.sh --no-bundle"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -31,5 +33,6 @@
     "tailwindcss": "^4.3.1",
     "typescript": "^5.9.2",
     "vite": "^8.0.12"
-  }
+  },
+  "packageManager": "npm@10"
 }

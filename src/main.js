@@ -19,6 +19,9 @@ if (isHttpLogEnabled()) {
 }
 
 setupDevtoolsShortcut()
-setupTouchKeyboard()
 
-createApp(App).mount('#app')
+const app = createApp(App)
+app.mount('#app')
+
+// 等 Vue 挂载完成后再注册，避免 isTauri / DOM 未就绪
+setupTouchKeyboard()

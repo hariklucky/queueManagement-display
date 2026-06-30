@@ -22,6 +22,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
+    "pinyin-match-hanzi": "^0.1.1",
+    "simple-keyboard": "^3.8.93",
     "tauri-plugin-device-info-api": "^1.0.1",
     "vue": "^3.5.34"
   },

@@ -14,6 +14,7 @@ interface ImportMetaEnv {
   readonly VITE_ID_CARD_READER_URL?: string
   readonly VITE_TICKET_PRINTER_URL?: string
   readonly VITE_APP_DEBUG?: string
+  readonly VITE_FORCE_ON_SCREEN_KEYBOARD?: string
   readonly TAURI_ENV_DEBUG?: string
   readonly TAURI_ENV_PLATFORM?: string
 }

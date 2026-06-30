@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import {
   createWalkinTicket,
   getAppointmentTicketByIdCard,
@@ -17,18 +17,45 @@ import type {
   AppointmentItem,
   TicketApiData,
 } from "../api/queue.types";
-import { readIdCard } from "../utils/idCardReader";
+import {
+  isReadIdCardCancelled,
+  readIdCard,
+} from "../utils/idCardReader";
 import type { IdCardInfo } from "../utils/idCardReader.types";
 import { resolveGatewayId } from "../utils/deviceInfo";
 import { setTerminalInitData, terminalStore } from "../utils/terminalContext";
 import {
   DEFAULT_TICKET_RESULT,
   type AppointmentDisplayData,
+  type BusinessTypeOption,
   type PageType,
   type TicketDisplayData,
 } from "./queueTicket.types";
+import {
+  activeInputElement,
+  closeOnScreenKeyboard,
+  isActiveKeyboardInput,
+  onScreenKeyboardVisible,
+  registerSubmitPassthrough,
+  syncKeyboardSessionValue,
+} from "../utils/onScreenKeyboard";
 
 const businessTypes = computed(() => terminalStore.businessTypes);
+
+const filteredBusinessTypes = computed(() => {
+  const query = businessTypeDisplay.value.trim().toLowerCase();
+  if (!query) {
+    return businessTypes.value;
+  }
+
+  return businessTypes.value.filter((item) =>
+    item.label.toLowerCase().includes(query)
+  );
+});
+
+const showBusinessTypeDropdown = computed(
+  () => businessTypeDropdownOpen.value && filteredBusinessTypes.value.length > 0
+);
 const initLoading = ref(false);
 
 const currentPage = ref<PageType>("home");
@@ -48,6 +75,7 @@ const appointmentDetailData = reactive<AppointmentDisplayData>({
 const appointmentPhone = ref("");
 const appointmentTakeLoading = ref(false);
 const scanIdLoading = ref(false);
+const appointmentIdCardModalVisible = ref(false);
 const queryLoading = ref(false);
 
 const username = ref("");
@@ -55,9 +83,55 @@ const phone = ref("");
 const walkinIdCardInfo = ref<IdCardInfo | null>(null);
 const businessType = ref("");
 const businessTypeDisplay = ref("");
+const businessTypeInputRef = ref<HTMLInputElement | null>(null);
+const businessTypeDropdownOpen = ref(false);
 const scanWalkinLoading = ref(false);
+const walkinIdCardModalVisible = ref(false);
 const submitLoading = ref(false);
 const phoneLookupLoading = ref(false);
+const walkinSubmitRef = ref<HTMLButtonElement | null>(null);
+const appointmentQueryRef = ref<HTMLButtonElement | null>(null);
+const formTipMessage = ref("");
+const formTipVisible = ref(false);
+
+let walkinIdCardAbort: AbortController | null = null;
+let appointmentIdCardAbort: AbortController | null = null;
+let formTipTimer: number | undefined;
+
+function cancelWalkinIdCardRead() {
+  walkinIdCardAbort?.abort();
+  walkinIdCardAbort = null;
+  scanWalkinLoading.value = false;
+  walkinIdCardModalVisible.value = false;
+}
+
+function closeWalkinIdCardModal() {
+  cancelWalkinIdCardRead();
+}
+
+function cancelAppointmentIdCardRead() {
+  appointmentIdCardAbort?.abort();
+  appointmentIdCardAbort = null;
+  scanIdLoading.value = false;
+  appointmentIdCardModalVisible.value = false;
+}
+
+function closeAppointmentIdCardModal() {
+  cancelAppointmentIdCardRead();
+}
+
+function closeActiveIdCardModal() {
+  if (walkinIdCardModalVisible.value) {
+    closeWalkinIdCardModal();
+  } else {
+    closeAppointmentIdCardModal();
+  }
+}
+
+function cancelAllIdCardReads() {
+  cancelWalkinIdCardRead();
+  cancelAppointmentIdCardRead();
+}
 
 async function loadTerminalInit() {
   if (initLoading.value) return;
@@ -90,24 +164,61 @@ async function loadTerminalInit() {
 
 onMounted(loadTerminalInit);
 
+onUnmounted(() => {
+  cancelAllIdCardReads();
+  registerSubmitPassthrough(null, null);
+  window.clearTimeout(formTipTimer);
+});
+
+watch(
+  [currentPage, walkinSubmitRef, appointmentQueryRef],
+  () => {
+    if (currentPage.value === "walkin" && walkinSubmitRef.value) {
+      registerSubmitPassthrough(walkinSubmitRef.value, handleWalkinSubmit);
+      return;
+    }
+
+    if (currentPage.value === "appointment" && appointmentQueryRef.value) {
+      registerSubmitPassthrough(
+        appointmentQueryRef.value,
+        handleQueryAppointment
+      );
+      return;
+    }
+
+    registerSubmitPassthrough(null, null);
+  },
+  { flush: "post" }
+);
+
+function showFormTip(message: string) {
+  formTipMessage.value = message;
+  formTipVisible.value = true;
+  window.clearTimeout(formTipTimer);
+  formTipTimer = window.setTimeout(() => {
+    formTipVisible.value = false;
+  }, 3000);
+}
+
 function goBackHome() {
+  cancelAllIdCardReads();
   currentPage.value = "home";
 }
 
 function resetAppointmentForm() {
+  cancelAppointmentIdCardRead();
   appointmentPhone.value = "";
   appointmentTakeLoading.value = false;
-  scanIdLoading.value = false;
   queryLoading.value = false;
 }
 
 function resetWalkinForm() {
+  cancelWalkinIdCardRead();
   username.value = "";
   phone.value = "";
   walkinIdCardInfo.value = null;
   businessType.value = "";
   businessTypeDisplay.value = "";
-  scanWalkinLoading.value = false;
   submitLoading.value = false;
   phoneLookupLoading.value = false;
 }
@@ -179,11 +290,56 @@ function handleBusinessTypeInput() {
   );
 
   businessType.value = matchedItem?.value || "";
+  businessTypeDropdownOpen.value = true;
+}
+
+function handleBusinessTypeFocus() {
+  businessTypeDropdownOpen.value = true;
+}
+
+function handleBusinessTypeBlur() {
+  window.setTimeout(() => {
+    const input = businessTypeInputRef.value;
+    if (!input) {
+      businessTypeDropdownOpen.value = false;
+      return;
+    }
+
+    if (document.activeElement === input) {
+      return;
+    }
+
+    if (
+      onScreenKeyboardVisible.value &&
+      activeInputElement.value === input
+    ) {
+      return;
+    }
+
+    businessTypeDropdownOpen.value = false;
+  }, 120);
+}
+
+function selectBusinessType(item: BusinessTypeOption) {
+  businessTypeDisplay.value = item.label;
+  businessType.value = item.value;
+  businessTypeDropdownOpen.value = false;
+
+  if (isActiveKeyboardInput(businessTypeInputRef.value)) {
+    syncKeyboardSessionValue(item.label);
+  }
 }
 
 function clearBusinessType() {
   businessTypeDisplay.value = "";
   businessType.value = "";
+
+  if (isActiveKeyboardInput(businessTypeInputRef.value)) {
+    syncKeyboardSessionValue("");
+  }
+
+  businessTypeDropdownOpen.value = true;
+  businessTypeInputRef.value?.focus({ preventScroll: true });
 }
 
 function formatResultTime(value: string) {
@@ -250,6 +406,7 @@ async function handleAppointmentQueryResult(
 }
 
 async function handleAppointmentTakeTicket() {
+  
   if (appointmentTakeLoading.value) return;
 
   if (!appointmentDetailData.number || appointmentDetailData.number === "--") {
@@ -280,27 +437,43 @@ async function handleAppointmentTakeTicket() {
 }
 
 function goBackAppointmentQuery() {
+  cancelAppointmentIdCardRead();
   currentPage.value = "appointment";
 }
 
 async function handleScanId() {
   if (scanIdLoading.value) return;
 
+  cancelAppointmentIdCardRead();
+  appointmentIdCardModalVisible.value = true;
+  appointmentIdCardAbort = new AbortController();
   scanIdLoading.value = true;
 
   try {
-    const idCardInfo = await readIdCard();
+    const idCardInfo = await readIdCard({
+      signal: appointmentIdCardAbort.signal,
+    });
+
+    appointmentIdCardModalVisible.value = false;
+
     const res = await getAppointmentTicketByIdCard(idCardInfo);
     await handleAppointmentQueryResult(
       res,
       "未查询到您的预约信息，请进行现场取号"
     );
   } catch (error) {
+    if (isReadIdCardCancelled(error)) {
+      return;
+    }
+
+    appointmentIdCardModalVisible.value = false;
+
     showErrorResult(
       getApiErrorMessage(error as Error, "读取身份证或查询预约失败，请重试")
     );
   } finally {
     scanIdLoading.value = false;
+    appointmentIdCardAbort = null;
   }
 }
 
@@ -308,14 +481,16 @@ async function handleQueryAppointment() {
   const phoneValue = appointmentPhone.value.trim();
 
   if (!phoneValue) {
-    alert("请输入手机号码");
+    showFormTip("请输入手机号码");
     return;
   }
 
   if (!validatePhone(phoneValue)) {
-    alert("请输入正确的手机号码格式");
+    showFormTip("请输入正确的手机号码格式");
     return;
   }
+
+  closeOnScreenKeyboard();
 
   if (queryLoading.value) return;
 
@@ -337,10 +512,15 @@ async function handleQueryAppointment() {
 async function handleScanIdWalkin() {
   if (scanWalkinLoading.value) return;
 
+  cancelWalkinIdCardRead();
+  walkinIdCardModalVisible.value = true;
+  walkinIdCardAbort = new AbortController();
   scanWalkinLoading.value = true;
 
   try {
-    const idCardInfo = await readIdCard();
+    const idCardInfo = await readIdCard({
+      signal: walkinIdCardAbort.signal,
+    });
 
     walkinIdCardInfo.value = idCardInfo;
     username.value = idCardInfo.name;
@@ -349,43 +529,73 @@ async function handleScanIdWalkin() {
       phone.value = filterDigits(idCardInfo.phone);
     }
 
+    walkinIdCardModalVisible.value = false;
+
     if (!idCardInfo.name) {
       alert("未能读取到姓名，请重新放置身份证");
     }
   } catch (error) {
+    if (isReadIdCardCancelled(error)) {
+      return;
+    }
+
+    walkinIdCardModalVisible.value = false;
     alert(
       getApiErrorMessage(error as Error, "读取身份证失败，请重新放置身份证")
     );
   } finally {
     scanWalkinLoading.value = false;
+    walkinIdCardAbort = null;
   }
+}
+
+function resolveWalkinBusinessType() {
+  const displayValue = businessTypeDisplay.value.trim();
+  if (!displayValue) {
+    businessType.value = "";
+    return "";
+  }
+
+  const matchedItem = businessTypes.value.find(
+    (item) => item.label === displayValue
+  );
+
+  if (matchedItem) {
+    businessType.value = matchedItem.value;
+    return matchedItem.value;
+  }
+
+  return businessType.value;
 }
 
 async function handleWalkinSubmit() {
   const customerName = username.value.trim();
   const customerPhone = phone.value.trim();
   const customerNumber = walkinIdCardInfo.value?.idNumber?.trim() || "";
-  const businessValue = businessType.value;
+  const businessValue = resolveWalkinBusinessType();
 
   if (!customerName) {
-    alert("请输入用户名");
+    showFormTip("请输入用户名");
     return;
   }
 
   if (!businessValue) {
-    alert("请选择办理业务类型");
+    showFormTip("请选择办理业务类型");
     return;
   }
 
   if (!customerNumber && !customerPhone) {
-    alert("请刷身份证或输入手机号码");
+    showFormTip("请刷身份证或输入手机号码");
     return;
   }
 
   if (customerPhone && !validatePhone(customerPhone)) {
-    alert("请输入正确的手机号码格式");
+    showFormTip("请输入正确的手机号码格式");
     return;
   }
+
+  closeOnScreenKeyboard();
+  businessTypeInputRef.value?.blur();
 
   if (submitLoading.value) return;
 
@@ -485,20 +695,13 @@ async function handleWalkinSubmit() {
 
             <div class="flex flex-col space-y-4">
               <button
-                class="flex items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-gray-300 p-4"
+                class="flex items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-gray-300 p-4 disabled:cursor-not-allowed disabled:opacity-70"
+                type="button"
                 :disabled="scanIdLoading"
                 @click="handleScanId"
               >
-                <template v-if="scanIdLoading">
-                  <i class="fas fa-spinner fa-spin text-xl text-primary"></i>
-                  <span class="ml-2 font-medium text-gray-700"
-                    >正在读取身份证信息...</span
-                  >
-                </template>
-                <template v-else>
-                  <i class="fas fa-id-card text-xl text-primary"></i>
-                  <span class="font-medium text-gray-700">点击刷身份证</span>
-                </template>
+                <i class="fas fa-id-card text-xl text-primary"></i>
+                <span class="font-medium text-gray-700">点击刷身份证</span>
               </button>
 
               <div class="relative">
@@ -519,7 +722,9 @@ async function handleWalkinSubmit() {
             </div>
 
             <button
+              ref="appointmentQueryRef"
               class="mt-6 w-full rounded-xl bg-primary py-4 text-lg font-medium text-white disabled:cursor-not-allowed disabled:opacity-70"
+              type="button"
               :disabled="queryLoading"
               @click="handleQueryAppointment"
             >
@@ -638,17 +843,33 @@ async function handleWalkinSubmit() {
             <div class="flex flex-col space-y-2">
               <label class="font-medium text-gray-700">办理业务类型</label>
               <div class="relative">
+                <ul
+                  v-if="showBusinessTypeDropdown"
+                  class="absolute inset-x-0 bottom-full z-[120] mb-1 box-border max-h-48 w-full overflow-x-hidden overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-[0_-4px_20px_rgba(15,23,42,0.12)]"
+                  @mousedown.prevent
+                >
+                  <li
+                    v-for="item in filteredBusinessTypes"
+                    :key="item.value"
+                    class="cursor-pointer px-4 py-2.5 text-gray-800 transition-colors hover:bg-blue-50 active:bg-blue-100"
+                    @mousedown="selectBusinessType(item)"
+                  >
+                    {{ item.label }}
+                  </li>
+                </ul>
                 <span
                   class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                 >
                   <i class="fas fa-briefcase"></i>
                 </span>
                 <input
+                  ref="businessTypeInputRef"
                   v-model="businessTypeDisplay"
                   class="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-12 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/50"
                   :disabled="initLoading"
-                  list="businessTypesList"
                   placeholder="请选择业务类型"
+                  @blur="handleBusinessTypeBlur"
+                  @focus="handleBusinessTypeFocus"
                   @input="handleBusinessTypeInput"
                 />
                 <button
@@ -656,17 +877,10 @@ async function handleWalkinSubmit() {
                   class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed"
                   type="button"
                   :disabled="initLoading"
-                  @click="clearBusinessType"
+                  @mousedown.prevent="clearBusinessType"
                 >
                   <i class="fas fa-times-circle"></i>
                 </button>
-                <datalist id="businessTypesList">
-                  <option
-                    v-for="item in businessTypes"
-                    :key="item.value"
-                    :value="item.label"
-                  />
-                </datalist>
               </div>
             </div>
 
@@ -677,26 +891,17 @@ async function handleWalkinSubmit() {
                 :disabled="scanWalkinLoading"
                 @click="handleScanIdWalkin"
               >
-                <i
-                  class="mr-2"
-                  :class="
-                    scanWalkinLoading
-                      ? 'fas fa-spinner fa-spin'
-                      : 'fas fa-id-card'
-                  "
-                ></i>
-                {{
-                  scanWalkinLoading
-                    ? "正在读取身份证信息..."
-                    : "刷身份证自动填写"
-                }}
+                <i class="fas fa-id-card mr-2"></i>
+                刷身份证自动填写
               </button>
             </div>
 
             <button
+              ref="walkinSubmitRef"
               class="mt-6 w-full rounded-xl bg-primary py-4 text-lg font-medium text-white disabled:cursor-not-allowed disabled:opacity-70"
-              type="submit"
+              type="button"
               :disabled="submitLoading"
+              @click="handleWalkinSubmit"
             >
               <i v-if="submitLoading" class="fas fa-spinner fa-spin mr-2"></i>
               {{ submitLoading ? "正在生成号码" : "获取排队号" }}
@@ -786,5 +991,61 @@ async function handleWalkinSubmit() {
         </div>
       </section>
     </div>
+
+    <!-- 表单校验提示（置于键盘之上） -->
+    <Teleport to="body">
+      <div
+        v-if="formTipVisible"
+        class="pointer-events-none fixed inset-x-0 top-10 z-[10001] flex justify-center px-4"
+      >
+        <div
+          class="rounded-xl bg-gray-900/90 px-6 py-3 text-base font-medium text-white shadow-lg"
+          role="alert"
+        >
+          {{ formTipMessage }}
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 刷身份证提示弹窗（预约取号 / 现场取号共用） -->
+    <Teleport to="body">
+      <div
+        v-if="walkinIdCardModalVisible || appointmentIdCardModalVisible"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      >
+        <div
+          class="card-shadow w-full max-w-md rounded-2xl bg-white p-8 text-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="id-card-modal-title"
+        >
+          <div
+            class="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-blue-50 text-primary"
+          >
+            <i class="fas fa-id-card text-4xl"></i>
+          </div>
+          <h3
+            id="id-card-modal-title"
+            class="mb-2 text-2xl font-bold text-gray-800"
+          >
+            请您刷取身份证
+          </h3>
+          <p class="mb-6 text-gray-600">
+            请将身份证放置在读卡器感应区，系统将自动读取身份证信息
+          </p>
+          <div class="mb-8 flex items-center justify-center text-primary">
+            <i class="fas fa-spinner fa-spin mr-2 text-xl"></i>
+            <span class="font-medium">正在等待读卡...</span>
+          </div>
+          <button
+            class="w-full rounded-xl border-2 border-gray-300 py-3 font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            type="button"
+            @click="closeActiveIdCardModal"
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -21,3 +21,16 @@ body {
     0 10px 25px -5px rgba(0, 0, 0, 0.1),
     0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
+
+/* 虚拟键盘打开时，保持当前输入框聚焦样式 */
+input.qms-keyboard-target,
+textarea.qms-keyboard-target {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgb(22 93 255 / 0.5);
+}
+
+/* 虚拟键盘打开时不滚动页面，避免表单被顶上去 */
+html.qms-keyboard-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}

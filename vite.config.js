@@ -1,6 +1,14 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const simpleKeyboardEsm = path.resolve(
+  __dirname,
+  'node_modules/simple-keyboard/build/index.modern.esm.js'
+)
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -15,6 +23,17 @@ export default defineConfig(({ mode }) => {
     plugins: [vue(), tailwindcss()],
     clearScreen: false,
     envPrefix: ['VITE_', 'TAURI_ENV_*'],
+    optimizeDeps: {
+      include: ['simple-keyboard', 'pinyin-match-hanzi'],
+    },
+    resolve: {
+      alias: [
+        {
+          find: /^simple-keyboard$/,
+          replacement: simpleKeyboardEsm,
+        },
+      ],
+    },
     server: {
       port: 5173,
       strictPort: true,

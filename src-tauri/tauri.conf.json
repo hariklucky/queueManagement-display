@@ -52,7 +52,7 @@
       },
       "wix": {
         "upgradeCode": "2e2fe057-a585-56a9-9dad-c127e14aacfe",
-        "language": ["zh-CN", "en-US"]
+        "language": ["zh-CN"]
       }
     }
   }

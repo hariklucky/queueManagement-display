@@ -4,6 +4,7 @@ import SimpleKeyboard from './SimpleKeyboard.vue'
 import {
   activeInputElement,
   applyBackspace,
+  applyDigit,
   applyKeyboardChange,
   applySpace,
   clearKeyboardInput,
@@ -14,6 +15,7 @@ import {
   onScreenKeyboardType,
   onScreenKeyboardVisible,
   setupKeyboardOutsideDismiss,
+  submitActiveInputForm,
   teardownKeyboardOutsideDismiss,
   type OnScreenKeyboardType,
 } from '../utils/onScreenKeyboard'
@@ -47,6 +49,17 @@ function handleBackspaceCommitted() {
 function handleCommitSpace() {
   applySpace()
   resetKeyboardBuffer()
+}
+
+function handleCommitDigit(digit: string) {
+  applyDigit(digit)
+  resetKeyboardBuffer()
+}
+
+function handleCommitEnter() {
+  finalizeBufferToCommitted()
+  resetKeyboardBuffer()
+  submitActiveInputForm()
 }
 
 function handleCloseKeyboard() {
@@ -100,6 +113,8 @@ onUnmounted(teardownKeyboardOutsideDismiss)
           @empty="handleEmpty"
           @backspace-committed="handleBackspaceCommitted"
           @commit-space="handleCommitSpace"
+          @commit-digit="handleCommitDigit"
+          @commit-enter="handleCommitEnter"
           @close-keyboard="handleCloseKeyboard"
           @update-keyboard-type="handleUpdateKeyboardType"
         />

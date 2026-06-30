@@ -1,240 +1,277 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
-import Keyboard from 'simple-keyboard'
-import 'simple-keyboard/build/css/index.css'
-import { getPinyinCandidates } from 'pinyin-match-hanzi'
-import type { OnScreenKeyboardType } from '../utils/onScreenKeyboard'
+import { onMounted, watch } from "vue";
+import Keyboard from "simple-keyboard";
+import "simple-keyboard/build/css/index.css";
+import { getPinyinCandidates } from "pinyin-match-hanzi";
+import type { OnScreenKeyboardType } from "../utils/onScreenKeyboard";
 
 const props = withDefaults(
   defineProps<{
-    keyboardClass?: string
-    maxLength?: string | number
-    keyboardType?: OnScreenKeyboardType
+    keyboardClass?: string;
+    maxLength?: string | number;
+    keyboardType?: OnScreenKeyboardType;
   }>(),
   {
-    keyboardClass: 'qms-on-screen-keyboard',
-    maxLength: '',
-    keyboardType: 'chinese',
+    keyboardClass: "qms-on-screen-keyboard",
+    maxLength: "",
+    keyboardType: "chinese",
   }
-)
+);
 
 const emit = defineEmits<{
-  onChange: [input: string]
-  empty: []
-  closeKeyboard: []
-  updateKeyboardType: [keyboardType: OnScreenKeyboardType]
-  backspaceCommitted: []
-  commitSpace: []
-}>()
+  onChange: [input: string];
+  empty: [];
+  closeKeyboard: [];
+  updateKeyboardType: [keyboardType: OnScreenKeyboardType];
+  backspaceCommitted: [];
+  commitSpace: [];
+  commitDigit: [digit: string];
+  commitEnter: [];
+}>();
 
-let keyboard: Keyboard | null = null
+function isPinyinOnly(value: string) {
+  return /^[a-zA-Z']+$/.test(value);
+}
+
+function resolvePinyinCandidates(input: string) {
+  if (!isPinyinOnly(input)) {
+    return "";
+  }
+
+  return getPinyinCandidates(input)
+    .map((item) => item.w)
+    .filter((word) => word.trim().length > 0)
+    .join(" ");
+}
+
+function syncLayoutCandidates(input: string) {
+  if (!keyboard || props.keyboardType !== "chinese") {
+    return;
+  }
+
+  if (keyboard.options.layoutName !== "default") {
+    return;
+  }
+
+  const candidates = resolvePinyinCandidates(input);
+  keyboard.setOptions({
+    layoutCandidates: candidates ? { [input]: candidates } : {},
+  });
+}
+
+let keyboard: Keyboard | null = null;
+let composeBufferBeforeUpdate = "";
 
 const displayDefault = {
-  '{bksp}': '⌫',
-  '{lock}': '⇪',
-  '{enter}': '确认',
-  '{tab}': 'Tab',
-  '{shift}': '⇧',
-  '{change}': '中/英',
-  '{space}': '空格',
-  '{clear}': '清空',
-  '{close}': '关闭',
-}
+  "{bksp}": "⌫",
+  "{lock}": "⇪",
+  "{enter}": "确认",
+  "{tab}": "Tab",
+  "{shift}": "⇧",
+  "{change}": "中/英",
+  "{space}": "空格",
+  "{clear}": "清空",
+  "{close}": "关闭",
+};
 
 const numberLayout = {
   default: [
-    '1 2 3',
-    '4 5 6',
-    '7 8 9',
-    '0 {bksp}',
-    '- + . @',
-    '{clear} {space} {close}',
+    "1 2 3",
+    "4 5 6",
+    "7 8 9",
+    "0 {bksp}",
+    "- + . @",
+    "{clear} {space} {close}",
   ],
-}
+};
 
 const englishLayout = {
   default: [
-    '1 2 3 4 5 6 7 8 9 0 {bksp}',
-    'q w e r t y u i o p',
-    'a s d f g h j k l {enter}',
-    '{shift} z x c v b n m',
-    '{change} {clear} {space} {close}',
+    "1 2 3 4 5 6 7 8 9 0 {bksp}",
+    "q w e r t y u i o p",
+    "a s d f g h j k l {enter}",
+    "{shift} z x c v b n m",
+    "{change} {clear} {space} {close}",
   ],
   shift: [
-    '! @ # $ % ^ & * ( ) {bksp}',
-    'Q W E R T Y U I O P',
-    'A S D F G H J K L {enter}',
-    '{shift} Z X C V B N M',
-    '{change} {clear} {space} {close}',
+    "! @ # $ % ^ & * ( ) {bksp}",
+    "Q W E R T Y U I O P",
+    "A S D F G H J K L {enter}",
+    "{shift} Z X C V B N M",
+    "{change} {clear} {space} {close}",
   ],
-}
+};
 
 const chineseLayout = {
   default: [
-    '1 2 3 4 5 6 7 8 9 0 {bksp}',
-    'q w e r t y u i o p',
-    'a s d f g h j k l {enter}',
-    '{shift} z x c v b n m',
-    '{change} {clear} {space} {close}',
+    "1 2 3 4 5 6 7 8 9 0 {bksp}",
+    "q w e r t y u i o p",
+    "a s d f g h j k l {enter}",
+    "{shift} z x c v b n m",
+    "{change} {clear} {space} {close}",
   ],
   shift: [
-    '! @ # $ % ^ & * ( ) {bksp}',
-    'Q W E R T Y U I O P',
-    'A S D F G H J K L {enter}',
-    '{shift} Z X C V B N M',
-    '{change} {clear} {space} {close}',
+    "! @ # $ % ^ & * ( ) {bksp}",
+    "Q W E R T Y U I O P",
+    "A S D F G H J K L {enter}",
+    "{shift} Z X C V B N M",
+    "{change} {clear} {space} {close}",
   ],
-}
+};
 
 function initializeKeyboard() {
   const commonOptions = {
+    beforeInputUpdate: (instance: Keyboard) => {
+      composeBufferBeforeUpdate = instance.getInput() ?? "";
+    },
     onChange,
     onKeyPress,
     display: displayDefault,
     buttonTheme: [
-      { class: 'hg-key-close', buttons: '{close}' },
-      { class: 'hg-key-func', buttons: '{change} {clear} {shift} {lock}' },
-      { class: 'hg-key-action', buttons: '{enter} {bksp}' },
-      { class: 'hg-key-space', buttons: '{space}' },
+      { class: "hg-key-close", buttons: "{close}" },
+      { class: "hg-key-func", buttons: "{change} {clear} {shift} {lock}" },
+      { class: "hg-key-action", buttons: "{enter} {bksp}" },
+      { class: "hg-key-space", buttons: "{space}" },
     ],
     maxLength: props.maxLength,
-  }
+  };
 
-  let layoutOptions: Record<string, unknown> = {}
+  let layoutOptions: Record<string, unknown> = {};
 
-  if (props.keyboardType === 'number') {
-    layoutOptions = { ...commonOptions, layout: numberLayout }
-  } else if (props.keyboardType === 'chinese') {
+  if (props.keyboardType === "number") {
+    layoutOptions = { ...commonOptions, layout: numberLayout };
+  } else if (props.keyboardType === "chinese") {
     layoutOptions = {
       ...commonOptions,
       layout: chineseLayout,
       layoutCandidatesPageSize: 10,
-    }
+    };
   } else {
-    layoutOptions = { ...commonOptions, layout: englishLayout }
+    layoutOptions = { ...commonOptions, layout: englishLayout };
   }
 
-  keyboard = new Keyboard(props.keyboardClass, layoutOptions)
+  keyboard = new Keyboard(props.keyboardClass, layoutOptions);
 }
 
 function applyKeyboardLayout() {
   if (!keyboard) {
-    return
+    return;
   }
 
-  if (props.keyboardType === 'number') {
+  if (props.keyboardType === "number") {
     keyboard.setOptions({
       layout: numberLayout,
       layoutCandidates: {},
       layoutCandidatesPageSize: 0,
-      layoutName: 'default',
-    })
-  } else if (props.keyboardType === 'chinese') {
+      layoutName: "default",
+    });
+  } else if (props.keyboardType === "chinese") {
     keyboard.setOptions({
       layout: chineseLayout,
       layoutCandidates: {},
       layoutCandidatesPageSize: 10,
-      layoutName: 'default',
-    })
+      layoutName: "default",
+    });
   } else {
     keyboard.setOptions({
       layout: englishLayout,
       layoutCandidates: {},
       layoutCandidatesPageSize: 0,
-      layoutName: 'default',
-    })
+      layoutName: "default",
+    });
   }
 
-  keyboard.clearInput()
+  keyboard.clearInput();
 }
 
 function onChange(input: string) {
-  if (props.keyboardType === 'chinese' && keyboard?.options.layoutName === 'default') {
-    keyboard.setOptions({
-      layoutCandidates: {
-        [input]: getPinyinCandidates(input)
-          .map((item) => item.w)
-          .join(' '),
-      },
-    })
-  }
-
-  emit('onChange', input)
+  syncLayoutCandidates(input);
+  emit("onChange", input);
 }
 
 function onKeyPress(button: string) {
-  if (button === '{bksp}') {
-    const current = keyboard?.getInput() ?? ''
-    if (current) {
-      const next = current.slice(0, -1)
-      keyboard?.setInput(next)
-      onChange(next)
-    } else {
-      emit('backspaceCommitted')
+  if (button === "{bksp}") {
+    // simple-keyboard 已在 onKeyPress 之前完成退格，勿重复 slice
+    if (!composeBufferBeforeUpdate) {
+      emit("backspaceCommitted");
     }
-    return
+    return;
   }
 
-  if (button === '{space}') {
-    if (props.keyboardType === 'chinese') {
-      emit('commitSpace')
-      keyboard?.setInput('')
-      onChange('')
+  if (button === "{enter}") {
+    emit("commitEnter");
+    return;
+  }
+
+  if (props.keyboardType === "chinese" && /^[0-9]$/.test(button)) {
+    emit("commitDigit", button);
+    keyboard?.setInput("");
+    syncLayoutCandidates("");
+    emit("onChange", "");
+    return;
+  }
+
+  if (button === "{space}") {
+    if (props.keyboardType === "chinese") {
+      emit("commitSpace");
+      keyboard?.setInput("");
+      syncLayoutCandidates("");
+      emit("onChange", "");
     } else {
-      const current = keyboard?.getInput() ?? ''
-      const next = `${current} `
-      keyboard?.setInput(next)
-      onChange(next)
+      const current = keyboard?.getInput() ?? "";
+      const next = `${current} `;
+      keyboard?.setInput(next);
+      onChange(next);
     }
-    return
+    return;
   }
 
-  if (button === '{close}') {
-    emit('closeKeyboard')
-    return
+  if (button === "{close}") {
+    emit("closeKeyboard");
+    return;
   }
 
-  if (button === '{change}') {
-    if (props.keyboardType === 'english') {
-      emit('updateKeyboardType', 'chinese')
-    } else if (props.keyboardType === 'chinese') {
-      emit('updateKeyboardType', 'english')
+  if (button === "{change}") {
+    if (props.keyboardType === "english") {
+      emit("updateKeyboardType", "chinese");
+    } else if (props.keyboardType === "chinese") {
+      emit("updateKeyboardType", "english");
     } else {
-      emit('updateKeyboardType', 'english')
+      emit("updateKeyboardType", "english");
     }
-    return
+    return;
   }
 
-  if (button === '{clear}') {
-    keyboard?.setInput('')
-    emit('empty')
-    return
+  if (button === "{clear}") {
+    keyboard?.setInput("");
+    emit("empty");
+    return;
   }
 
-  if (button === '{shift}' || button === '{lock}') {
-    handleShift()
+  if (button === "{shift}" || button === "{lock}") {
+    handleShift();
   }
 }
 
 function handleShift() {
-  if (!keyboard) return
+  if (!keyboard) return;
 
-  const currentLayout = keyboard.options.layoutName
-  const shiftToggle = currentLayout === 'default' ? 'shift' : 'default'
-  keyboard.setOptions({ layoutName: shiftToggle })
+  const currentLayout = keyboard.options.layoutName;
+  const shiftToggle = currentLayout === "default" ? "shift" : "default";
+  keyboard.setOptions({ layoutName: shiftToggle });
 }
 
 function onChangeFocus(value: string) {
-  keyboard?.setInput(value)
+  keyboard?.setInput(value);
 }
 
-onMounted(initializeKeyboard)
+onMounted(initializeKeyboard);
 
-watch(() => props.keyboardType, applyKeyboardLayout)
+watch(() => props.keyboardType, applyKeyboardLayout);
 
 defineExpose({
   onChangeFocus,
-})
+});
 </script>
 
 <template>
@@ -249,7 +286,7 @@ defineExpose({
   background: linear-gradient(180deg, #f8fafc 0%, #eef2f8 100%);
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -10px 40px rgba(22, 93, 255, 0.1);
-  font-family: 'Noto Sans SC', sans-serif;
+  font-family: "Noto Sans SC", sans-serif;
   overflow: visible;
 }
 
@@ -308,7 +345,7 @@ defineExpose({
 /* 用 CSS 三角形替代 ◄ ►，保证左右大小一致 */
 .qms-on-screen-keyboard .hg-candidate-box-prev::before,
 .qms-on-screen-keyboard .hg-candidate-box-next::before {
-  content: '';
+  content: "";
   display: block;
   width: 0;
   height: 0;
@@ -336,8 +373,10 @@ defineExpose({
   background: #eff6ff;
 }
 
-.qms-on-screen-keyboard .hg-candidate-box-prev:not(.hg-candidate-box-btn-active),
-.qms-on-screen-keyboard .hg-candidate-box-next:not(.hg-candidate-box-btn-active) {
+.qms-on-screen-keyboard
+  .hg-candidate-box-prev:not(.hg-candidate-box-btn-active),
+.qms-on-screen-keyboard
+  .hg-candidate-box-next:not(.hg-candidate-box-btn-active) {
   opacity: 0.45;
   cursor: default;
 }
@@ -399,9 +438,7 @@ defineExpose({
   color: #374151 !important;
   font-size: 20px !important;
   font-weight: 500;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 2px 4px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04) !important;
   transition: background 0.12s ease, transform 0.08s ease;
 }
 

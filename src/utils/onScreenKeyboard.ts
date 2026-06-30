@@ -29,10 +29,6 @@ function isPinyinComposing(value: string) {
   return /^[a-zA-Z']+$/.test(value)
 }
 
-function isLatinOrDigitComposing(value: string) {
-  return /^[a-zA-Z0-9']+$/.test(value)
-}
-
 function containsChinese(value: string) {
   return /[\u4e00-\u9fff]/.test(value)
 }
@@ -300,7 +296,11 @@ export function applyKeyboardChange(value: string): boolean {
       return false
     }
 
-    if (isPinyinComposing(value) || isLatinOrDigitComposing(value)) {
+    if (/^[0-9]+$/.test(value)) {
+      return false
+    }
+
+    if (isPinyinComposing(value)) {
       setInputValue(input, committedText.value + value)
       return false
     }
@@ -336,6 +336,16 @@ export function applySpace() {
   setInputValue(input, committedText.value)
 }
 
+export function applyDigit(digit: string) {
+  const input = activeInputElement.value
+  if (!input || !/^[0-9]$/.test(digit)) {
+    return
+  }
+
+  committedText.value += digit
+  setInputValue(input, committedText.value)
+}
+
 export function clearKeyboardInput() {
   committedText.value = ''
   const input = activeInputElement.value
@@ -349,6 +359,31 @@ export function finalizeBufferToCommitted() {
   if (input) {
     committedText.value = input.value
   }
+}
+
+/** 与物理键盘回车一致：提交当前输入框所在表单 */
+export function submitActiveInputForm() {
+  const input = activeInputElement.value
+  if (!input) {
+    return
+  }
+
+  committedText.value = input.value
+
+  const form = input.closest('form')
+  if (form instanceof HTMLFormElement) {
+    form.requestSubmit()
+    return
+  }
+
+  input.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    })
+  )
 }
 
 /** 外部修改输入框内容时（如清空按钮），通知键盘组件重置内部缓冲 */

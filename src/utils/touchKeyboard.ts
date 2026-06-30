@@ -11,6 +11,7 @@ const INPUT_SELECTOR =
 const KEYBOARD_RETRY_COUNT = 2
 const KEYBOARD_RETRY_DELAY_MS = 300
 const KEYBOARD_INVOKE_DELAY_MS = 120
+const ACTIVATE_DEBOUNCE_MS = 400
 
 interface TouchKeyboardResult {
   method: string
@@ -20,6 +21,8 @@ interface TouchKeyboardResult {
 let opening = false
 let installed = false
 let activeInput: HTMLInputElement | HTMLTextAreaElement | null = null
+let lastActivatedInput: HTMLElement | null = null
+let lastActivatedAt = 0
 
 function isTauriRuntime() {
   return (
@@ -115,6 +118,52 @@ function focusInputAtEnd(input: HTMLInputElement | HTMLTextAreaElement) {
   }
 }
 
+function isNonWindowsTauriRuntime() {
+  const platform = import.meta.env.TAURI_ENV_PLATFORM
+  if (platform) {
+    return isTauriRuntime() && platform !== 'windows'
+  }
+
+  return (
+    isTauriRuntime() &&
+    typeof navigator !== 'undefined' &&
+    !/Win/i.test(navigator.userAgent)
+  )
+}
+
+function shouldUseInAppKeyboardOnly() {
+  return (
+    shouldForceOnScreenKeyboard() ||
+    !isTauriRuntime() ||
+    isNonWindowsTauriRuntime()
+  )
+}
+
+function shouldSkipDuplicateActivate(input: HTMLElement) {
+  const now = Date.now()
+  if (
+    lastActivatedInput === input &&
+    now - lastActivatedAt < ACTIVATE_DEBOUNCE_MS
+  ) {
+    return true
+  }
+
+  lastActivatedInput = input
+  lastActivatedAt = now
+  return false
+}
+
+function isNonRetryableKeyboardResult(result: TouchKeyboardResult | null) {
+  if (!result) {
+    return false
+  }
+
+  return (
+    result.method === 'skipped-non-windows' ||
+    result.method === 'none'
+  )
+}
+
 function shouldOpenOnScreenKeyboardImmediately(
   input: HTMLElement
 ): input is HTMLInputElement | HTMLTextAreaElement {
@@ -122,15 +171,16 @@ function shouldOpenOnScreenKeyboardImmediately(
     return false
   }
 
-  if (shouldForceOnScreenKeyboard() || !isTauriRuntime()) {
+  if (shouldUseInAppKeyboardOnly()) {
     return true
   }
 
-  return (
-    onScreenKeyboardVisible.value &&
-    keyboardActiveInput.value !== null &&
-    keyboardActiveInput.value !== input
-  )
+  // 应用内键盘已展示时，只切换绑定输入框，不再唤起系统键盘
+  if (onScreenKeyboardVisible.value) {
+    return true
+  }
+
+  return false
 }
 
 function shouldSkipRedundantClickActivate(
@@ -159,6 +209,10 @@ async function invokeTouchKeyboard(source: string) {
       logTouchKeyboard('触摸键盘命令已执行', { source, attempt, ...result })
 
       if (result.visible) {
+        return result
+      }
+
+      if (isNonRetryableKeyboardResult(result)) {
         return result
       }
 
@@ -201,6 +255,14 @@ async function showTouchKeyboard(source: string) {
     return
   }
 
+  if (onScreenKeyboardVisible.value) {
+    logTouchKeyboard('应用内键盘已展示，跳过重复唤起', { source })
+    if (activeInput) {
+      openOnScreenKeyboard(activeInput)
+    }
+    return
+  }
+
   if (!isTauriRuntime()) {
     if (activeInput) {
       openOnScreenKeyboard(activeInput)
@@ -208,8 +270,8 @@ async function showTouchKeyboard(source: string) {
     return
   }
 
-  if (shouldForceOnScreenKeyboard()) {
-    logTouchKeyboard('已配置为直接使用应用内虚拟键盘', { source })
+  if (shouldForceOnScreenKeyboard() || isNonWindowsTauriRuntime()) {
+    logTouchKeyboard('直接使用应用内虚拟键盘', { source })
     openFallbackKeyboard()
     return
   }
@@ -252,6 +314,10 @@ function handleInputActivate(event: Event) {
   }
 
   if (shouldSkipRepeatKeyboardActivate(input, event.type)) {
+    return
+  }
+
+  if (shouldSkipDuplicateActivate(input)) {
     return
   }
 
@@ -318,10 +384,8 @@ export function setupTouchKeyboard() {
 
   document.addEventListener('focusin', handleInputActivate, true)
   document.addEventListener('pointerdown', handleInputActivate, true)
-  document.addEventListener('touchstart', handleInputActivate, true)
-  document.addEventListener('click', handleInputActivate, true)
 
-  logTouchKeyboard('监听已注册（focusin / pointerdown / touchstart / click）')
+  logTouchKeyboard('监听已注册（focusin / pointerdown）')
 
   void warmUpTouchKeyboard()
 }

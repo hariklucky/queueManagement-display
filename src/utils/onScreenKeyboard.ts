@@ -16,6 +16,8 @@ export const committedText = ref('')
 
 let blurGuardInput: HTMLInputElement | HTMLTextAreaElement | null = null
 let blurGuardToken = 0
+let lastPointerTarget: EventTarget | null = null
+let outsideDismissInstalled = false
 
 function resolveKeyboardType(
   _input: HTMLInputElement | HTMLTextAreaElement
@@ -66,6 +68,91 @@ function focusInputAtEnd(input: HTMLInputElement | HTMLTextAreaElement) {
   }
 }
 
+function isKeyboardInteractionTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false
+  }
+
+  return Boolean(
+    target.closest('.keyboard-panel') ||
+      target.closest('.qms-on-screen-keyboard')
+  )
+}
+
+function isActiveInputTarget(target: EventTarget | null) {
+  const input = activeInputElement.value
+  if (!input || !(target instanceof Element)) {
+    return false
+  }
+
+  return target === input || input.contains(target)
+}
+
+function resolveEditableInputTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return null
+  }
+
+  const element = target.closest(
+    'input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])'
+  )
+
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement
+  ) {
+    return element
+  }
+
+  return null
+}
+
+function handleOutsideDismiss(event: PointerEvent) {
+  lastPointerTarget = event.target
+
+  if (!onScreenKeyboardVisible.value) {
+    return
+  }
+
+  if (isKeyboardInteractionTarget(event.target)) {
+    return
+  }
+
+  if (isActiveInputTarget(event.target)) {
+    return
+  }
+
+  const nextInput = resolveEditableInputTarget(event.target)
+  if (nextInput) {
+    if (nextInput !== activeInputElement.value) {
+      openOnScreenKeyboard(nextInput)
+    }
+    return
+  }
+
+  const input = activeInputElement.value
+  closeOnScreenKeyboard()
+  input?.blur()
+}
+
+export function setupKeyboardOutsideDismiss() {
+  if (outsideDismissInstalled) {
+    return
+  }
+
+  outsideDismissInstalled = true
+  document.addEventListener('pointerdown', handleOutsideDismiss, true)
+}
+
+export function teardownKeyboardOutsideDismiss() {
+  if (!outsideDismissInstalled) {
+    return
+  }
+
+  outsideDismissInstalled = false
+  document.removeEventListener('pointerdown', handleOutsideDismiss, true)
+}
+
 function handleActiveInputBlur() {
   if (!onScreenKeyboardVisible.value || !blurGuardInput) {
     return
@@ -95,6 +182,15 @@ function handleActiveInputBlur() {
     }
 
     if (activeInputElement.value !== inputThatBlurred) {
+      return
+    }
+
+    if (
+      !(
+        lastPointerTarget instanceof Element &&
+        lastPointerTarget.closest('.keyboard-panel, .qms-on-screen-keyboard')
+      )
+    ) {
       return
     }
 

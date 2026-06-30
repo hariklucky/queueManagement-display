@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import SimpleKeyboard from './SimpleKeyboard.vue'
 import {
   activeInputElement,
@@ -13,6 +13,8 @@ import {
   maintainActiveInputFocus,
   onScreenKeyboardType,
   onScreenKeyboardVisible,
+  setupKeyboardOutsideDismiss,
+  teardownKeyboardOutsideDismiss,
   type OnScreenKeyboardType,
 } from '../utils/onScreenKeyboard'
 
@@ -71,6 +73,10 @@ watch(
 watch(keyboardSessionResetSignal, () => {
   resetKeyboardBuffer()
 })
+
+onMounted(setupKeyboardOutsideDismiss)
+
+onUnmounted(teardownKeyboardOutsideDismiss)
 </script>
 
 <template>

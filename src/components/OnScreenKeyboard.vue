@@ -13,7 +13,6 @@ import {
   maintainActiveInputFocus,
   onScreenKeyboardType,
   onScreenKeyboardVisible,
-  trySubmitPassthrough,
   type OnScreenKeyboardType,
 } from '../utils/onScreenKeyboard'
 
@@ -72,30 +71,6 @@ watch(
 watch(keyboardSessionResetSignal, () => {
   resetKeyboardBuffer()
 })
-
-function isKeyboardInteractiveTarget(target: EventTarget | null) {
-  if (!(target instanceof Element)) {
-    return false
-  }
-
-  return Boolean(
-    target.closest('.qms-on-screen-keyboard') ||
-      target.closest('.keyboard-handle')
-  )
-}
-
-function handleShellPointerDown(event: MouseEvent | TouchEvent) {
-  if (isKeyboardInteractiveTarget(event.target)) {
-    return
-  }
-
-  if (trySubmitPassthrough(event)) {
-    return
-  }
-
-  event.preventDefault()
-  maintainActiveInputFocus()
-}
 </script>
 
 <template>
@@ -106,10 +81,12 @@ function handleShellPointerDown(event: MouseEvent | TouchEvent) {
     >
       <div
         class="keyboard-panel pointer-events-auto mx-auto w-full max-w-3xl px-3 pb-3 pt-2"
-        @mousedown="handleShellPointerDown"
-        @touchstart="handleShellPointerDown"
       >
-        <div class="keyboard-handle mx-auto mb-2 h-1 w-12 rounded-full bg-gray-300/80" />
+        <div
+          class="keyboard-handle mx-auto mb-2 h-1 w-12 rounded-full bg-gray-300/80"
+          @mousedown.prevent="maintainActiveInputFocus"
+          @touchstart.prevent="maintainActiveInputFocus"
+        />
         <SimpleKeyboard
           ref="keyboardRef"
           :keyboard-type="onScreenKeyboardType"

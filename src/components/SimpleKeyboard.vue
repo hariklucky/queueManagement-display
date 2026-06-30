@@ -301,6 +301,7 @@ defineExpose({
   border-right: 1px solid #f3f4f6;
   cursor: pointer;
   user-select: none;
+  touch-action: manipulation;
   transition: color 0.15s ease, background 0.15s ease;
 }
 
@@ -374,6 +375,7 @@ defineExpose({
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
+  touch-action: manipulation;
   transition: background 0.15s ease, color 0.15s ease;
 }
 

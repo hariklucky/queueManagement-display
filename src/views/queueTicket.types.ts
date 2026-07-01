@@ -27,9 +27,9 @@ export interface TicketDisplayData {
 
 /** 取号结果默认展示数据 */
 export const DEFAULT_TICKET_RESULT: TicketDisplayData = {
-  number: 'A008',
-  business: '开户办理',
-  name: '张三',
-  waiting: 3,
-  time: '15分钟',
+  number: '',
+  business: '',
+  name: '',
+  waiting: 0,
+  time: '',
 }

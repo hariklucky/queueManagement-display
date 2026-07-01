@@ -36,7 +36,6 @@
 |------|----------|------|
 | 排队后端 API | `http://localhost:8080`（开发） | 预约查询、现场取号等接口 |
 | 身份证读卡 | `http://127.0.0.1:8989/api/ReadCard` | 读取身份证信息 |
-| 小票打印 | `http://127.0.0.1:8990/api/PrintTicket` | 打印排队小票 |
 
 ## 快速开始
 
@@ -70,7 +69,6 @@ VITE_API_PROXY_REWRITE=false
 
 # 读卡器、打印机本地服务地址（生产/测试环境）
 VITE_ID_CARD_READER_URL=http://127.0.0.1:8989/api/ReadCard
-VITE_TICKET_PRINTER_URL=http://127.0.0.1:8990/api/PrintTicket
 ```
 
 开发模式下，`/api` 请求会通过 Vite 代理转发到 `VITE_API_TARGET`，无需额外处理跨域。

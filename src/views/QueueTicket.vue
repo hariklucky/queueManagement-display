@@ -391,11 +391,6 @@ async function handleTicketSuccess(
 
     showSuccessResult(ticketData);
 
-    // try {
-    //   await printTicket(ticketData)
-    // } catch (error) {
-    //   alert(getApiErrorMessage(error as Error, '取号成功，但小票打印失败，请联系工作人员'))
-    // }
   } else {
     showErrorResult(getResponseErrorMessage(res, fallbackMessage), "取号失败");
   }

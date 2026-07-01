@@ -1,14 +1,19 @@
-import type { IdCardInfo, IdCardRawData } from './idCardReader.types'
+import type {
+  IdCardInfo,
+  IdCardRawData,
+  IdCardReadApiData,
+  IdCardReadApiResponse,
+} from './idCardReader.types'
+import { buildApiUrl } from './request'
 import { appFetch } from './httpFetch'
+import { getBusinessHallId } from './terminalContext'
 
 export interface ReadIdCardOptions {
-  /** 最长等待用户放卡时间（毫秒），默认 30 秒 */
+  /** 单次读卡请求超时（毫秒），默认 10 秒 */
   timeoutMs?: number
-  /** 轮询读卡间隔（毫秒），默认 800 */
-  intervalMs?: number
-  /** 每次尝试读卡前的回调（可用于更新 UI 提示） */
+  /** 读卡尝试前的回调 */
   onAttempt?: (attempt: number) => void
-  /** 用于取消轮询（例如用户离开页面） */
+  /** 用于取消读卡（例如用户关闭弹窗） */
   signal?: AbortSignal
 }
 
@@ -23,8 +28,49 @@ export function isReadIdCardCancelled(error: unknown) {
   return error instanceof ReadIdCardCancelledError
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000
-const DEFAULT_INTERVAL_MS = 800
+const DEFAULT_TIMEOUT_MS = 10_000
+const ID_CARD_READ_PATH = '/queue-call/id-card/read'
+
+function createReadIdCardSignal(
+  parentSignal?: AbortSignal,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+) {
+  const controller = new AbortController()
+
+  const timer = window.setTimeout(() => {
+    if (!controller.signal.aborted) {
+      controller.abort(new DOMException('读取身份证超时', 'TimeoutError'))
+    }
+  }, timeoutMs)
+
+  const cleanup = () => {
+    window.clearTimeout(timer)
+  }
+
+  const abortWith = (reason: unknown) => {
+    cleanup()
+    if (!controller.signal.aborted) {
+      controller.abort(reason)
+    }
+  }
+
+  if (parentSignal?.aborted) {
+    abortWith(parentSignal.reason ?? new ReadIdCardCancelledError())
+    return controller.signal
+  }
+
+  parentSignal?.addEventListener(
+    'abort',
+    () => {
+      abortWith(parentSignal.reason ?? new ReadIdCardCancelledError())
+    },
+    { once: true }
+  )
+
+  controller.signal.addEventListener('abort', cleanup, { once: true })
+
+  return controller.signal
+}
 
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
@@ -32,53 +78,26 @@ function throwIfAborted(signal?: AbortSignal) {
   }
 }
 
-function sleep(ms: number, signal?: AbortSignal) {
+function normalizeReadIdCardError(error: unknown, signal?: AbortSignal) {
   throwIfAborted(signal)
 
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-
-    const onAbort = () => {
-      window.clearTimeout(timer)
-      reject(new ReadIdCardCancelledError())
-    }
-
-    signal?.addEventListener('abort', onAbort, { once: true })
-  })
-}
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  if (typeof error === 'object' && error && 'message' in error) {
-    return String((error as { message?: string }).message)
-  }
-
-  return String(error)
-}
-
-/** 设备/服务不可用时不继续轮询 */
-function shouldRetryReadCard(error: unknown) {
   if (isReadIdCardCancelled(error)) {
-    return false
+    return error
   }
 
-  const message = getErrorMessage(error)
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return new ReadIdCardCancelledError()
+  }
 
-  return !(
-    message.includes('读卡器连接失败') ||
-    message.includes('接口返回了 HTML') ||
-    message.includes('非 JSON')
-  )
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return new Error('读取身份证超时，请重新点击按钮后再放置身份证')
+  }
+
+  return error
 }
 
 /**
- * 标准化身份证读卡器返回的数据字段
+ * 标准化身份证读卡器返回的数据字段（兼容旧读卡器 / 宿主注入）
  */
 export function normalizeIdCardInfo(raw: IdCardRawData = {}): IdCardInfo {
   return {
@@ -92,92 +111,101 @@ export function normalizeIdCardInfo(raw: IdCardRawData = {}): IdCardInfo {
   }
 }
 
-/** 单次读卡，未读到证件时会抛错 */
-async function readIdCardOnce(): Promise<IdCardInfo> {
-  if (window.IdCardReader?.read) {
-    const data = await window.IdCardReader.read()
-    const idCardInfo = normalizeIdCardInfo(data)
+/** 映射后端 /queue-call/id-card/read 返回的 data */
+export function mapIdCardReadApiData(data: IdCardReadApiData = {}): IdCardInfo {
+  return {
+    name: data.name || '',
+    idNumber: data.idNumber || data.idCard || '',
+    gender: data.gender || '',
+    nation: data.nation || '',
+    address: data.address || '',
+    birthday: data.birthDate || '',
+    phone: '',
+  }
+}
 
-    if (!idCardInfo.idNumber) {
-      throw new Error('未能读取到身份证号，请将身份证放在读卡器上')
-    }
-
-    return idCardInfo
+function buildIdCardReadHeaders() {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
   }
 
-  const readerUrl =
-    import.meta.env.VITE_ID_CARD_READER_URL || 'http://127.0.0.1:8989/api/ReadCard'
-
-  const response = await appFetch(readerUrl, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-  })
-
-  if (!response.ok) {
-    throw new Error('身份证读卡器连接失败，请检查设备')
+  const hallId = getBusinessHallId()
+  if (hallId) {
+    headers['X-Business-Hall-Id'] = hallId
   }
 
-  const data = (await response.json()) as IdCardRawData
+  return headers
+}
 
-  if (
-    data.result !== undefined &&
-    data.result !== 0 &&
-    data.result !== '0' &&
-    data.code !== 0 &&
-    data.code !== 200
-  ) {
-    throw new Error(data.message || data.msg || '未检测到身份证，请将证件放在读卡器上')
-  }
+async function readIdCardFromBridge(signal?: AbortSignal): Promise<IdCardInfo> {
+  throwIfAborted(signal)
+
+  const data = await window.IdCardReader!.read()
+  throwIfAborted(signal)
 
   const idCardInfo = normalizeIdCardInfo(data)
-
-  if (!idCardInfo.idNumber) {
-    throw new Error('未能读取到身份证号，请将身份证放在读卡器上')
+  if (!idCardInfo.name && !idCardInfo.idNumber) {
+    throw new Error('未能读取到身份证信息，请将身份证放在读卡器上')
   }
 
   return idCardInfo
 }
 
-/**
- * 等待用户放卡并读取身份证。
- * 典型流程：用户先点按钮 → 再将身份证放到读卡器 → 系统在超时前轮询读卡接口。
- */
-export async function readIdCard(options: ReadIdCardOptions = {}): Promise<IdCardInfo> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS
-  const { signal } = options
-  const deadline = Date.now() + timeoutMs
-  let attempt = 0
-  let lastError: unknown
+async function readIdCardFromApi(signal?: AbortSignal): Promise<IdCardInfo> {
+  throwIfAborted(signal)
 
-  while (Date.now() < deadline) {
-    throwIfAborted(signal)
-
-    attempt += 1
-    options.onAttempt?.(attempt)
-
-    try {
-      return await readIdCardOnce()
-    } catch (error) {
-      if (isReadIdCardCancelled(error)) {
-        throw error
-      }
-
-      lastError = error
-
-      if (!shouldRetryReadCard(error)) {
-        throw error
-      }
-    }
-
-    await sleep(intervalMs, signal)
-  }
+  const response = await appFetch(buildApiUrl(ID_CARD_READ_PATH), {
+    method: 'GET',
+    headers: buildIdCardReadHeaders(),
+    signal,
+  })
 
   throwIfAborted(signal)
 
-  if (lastError instanceof Error) {
-    throw lastError
+  let payload: IdCardReadApiResponse
+  try {
+    payload = (await response.json()) as IdCardReadApiResponse
+  } catch {
+    throw new Error('身份证读卡接口返回了非 JSON 数据，请检查后端服务')
   }
 
-  throw new Error('读取身份证超时，请重新点击按钮后再放置身份证')
+  if (!response.ok) {
+    throw new Error(payload.msg || '身份证读卡请求失败，请检查设备')
+  }
+
+  if (payload.code !== 0) {
+    throw new Error(payload.msg || '读取失败')
+  }
+
+  if (!payload.data?.name) {
+    throw new Error(payload.msg || '未能读取到身份证姓名，请将证件放在读卡器上')
+  }
+
+  return mapIdCardReadApiData(payload.data)
+}
+
+/** 单次读卡，未读到证件时会抛错 */
+async function readIdCardOnce(signal?: AbortSignal): Promise<IdCardInfo> {
+  if (window.IdCardReader?.read) {
+    return readIdCardFromBridge(signal)
+  }
+
+  return readIdCardFromApi(signal)
+}
+
+/**
+ * 读取身份证（单次请求，不轮询）。
+ */
+export async function readIdCard(options: ReadIdCardOptions = {}): Promise<IdCardInfo> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const requestSignal = createReadIdCardSignal(options.signal, timeoutMs)
+
+  throwIfAborted(options.signal)
+  options.onAttempt?.(1)
+
+  try {
+    return await readIdCardOnce(requestSignal)
+  } catch (error) {
+    throw normalizeReadIdCardError(error, options.signal)
+  }
 }

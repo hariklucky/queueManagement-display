@@ -29,6 +29,23 @@ function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
   return { ...headers }
 }
 
+function waitForAbortSignal(signal: AbortSignal) {
+  return new Promise<never>((_, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+      return
+    }
+
+    signal.addEventListener(
+      'abort',
+      () => {
+        reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+      },
+      { once: true }
+    )
+  })
+}
+
 /**
  * 开发模式：WebView fetch（走 Vite 代理，Network 面板可见 /api 请求）。
  * 生产 Tauri：Rust 原生 HTTP（Network 不显示真实 URL，请看 Console 的 [QMS] 日志）。
@@ -38,15 +55,23 @@ export async function appFetch(input: string, init?: RequestInit): Promise<Respo
     return fetch(input, init)
   }
 
-  const result = await invoke<NativeHttpResponse>('native_http_fetch', {
+  const signal = init?.signal
+  const fetchPromise = invoke<NativeHttpResponse>('native_http_fetch', {
     url: input,
     method: init?.method || 'GET',
     headers: normalizeHeaders(init?.headers),
     body: typeof init?.body === 'string' ? init.body : null,
-  })
+  }).then(
+    (result) =>
+      new Response(result.body, {
+        status: result.status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+  )
 
-  return new Response(result.body, {
-    status: result.status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+  if (!signal) {
+    return fetchPromise
+  }
+
+  return Promise.race([fetchPromise, waitForAbortSignal(signal)])
 }

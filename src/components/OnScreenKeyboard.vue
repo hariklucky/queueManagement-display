@@ -15,24 +15,33 @@ import {
   onScreenKeyboardType,
   onScreenKeyboardVisible,
   setupKeyboardOutsideDismiss,
-  submitActiveInputForm,
   teardownKeyboardOutsideDismiss,
   type OnScreenKeyboardType,
 } from '../utils/onScreenKeyboard'
 
 const keyboardRef = ref<InstanceType<typeof SimpleKeyboard> | null>(null)
 
-function resetKeyboardBuffer() {
+function resetKeyboardBuffer(remainingPinyin = '') {
   requestAnimationFrame(() => {
-    keyboardRef.value?.onChangeFocus('')
-    finalizeBufferToCommitted()
+    keyboardRef.value?.onChangeFocus(remainingPinyin)
+    if (!remainingPinyin) {
+      finalizeBufferToCommitted()
+    }
   })
 }
 
-function handleKeyboardInput(value: string) {
-  const shouldResetBuffer = applyKeyboardChange(value)
+function handleKeyboardInput(value: string, pendingPinyinBeforeUpdate = '') {
+  const { shouldResetBuffer, remainingPinyin } = applyKeyboardChange(
+    value,
+    pendingPinyinBeforeUpdate
+  )
   if (shouldResetBuffer) {
-    resetKeyboardBuffer()
+    if (remainingPinyin) {
+      keyboardRef.value?.onChangeFocus(remainingPinyin)
+      return
+    }
+
+    resetKeyboardBuffer('')
   }
 }
 
@@ -59,7 +68,6 @@ function handleCommitDigit(digit: string) {
 function handleCommitEnter() {
   finalizeBufferToCommitted()
   resetKeyboardBuffer()
-  submitActiveInputForm()
 }
 
 function handleCloseKeyboard() {

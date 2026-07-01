@@ -19,7 +19,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  onChange: [input: string];
+  onChange: [input: string, pendingPinyinBeforeUpdate: string];
   empty: [];
   closeKeyboard: [];
   updateKeyboardType: [keyboardType: OnScreenKeyboardType];
@@ -31,6 +31,21 @@ const emit = defineEmits<{
 
 function isPinyinOnly(value: string) {
   return /^[a-zA-Z']+$/.test(value);
+}
+
+function containsChinese(value: string) {
+  return /[\u4e00-\u9fff]/.test(value);
+}
+
+function isCandidateSelection(
+  pendingPinyinBeforeUpdate: string,
+  input: string
+) {
+  return (
+    isPinyinOnly(pendingPinyinBeforeUpdate) &&
+    containsChinese(input) &&
+    !isPinyinOnly(input)
+  );
 }
 
 function resolvePinyinCandidates(input: string) {
@@ -57,6 +72,38 @@ function syncLayoutCandidates(input: string) {
   keyboard.setOptions({
     layoutCandidates: candidates ? { [input]: candidates } : {},
   });
+}
+
+function refreshCandidateBox(input: string) {
+  if (!keyboard || props.keyboardType !== "chinese") {
+    return;
+  }
+
+  if (keyboard.options.layoutName !== "default") {
+    return;
+  }
+
+  const candidates = resolvePinyinCandidates(input);
+
+  keyboard.setInput(input);
+  keyboard.setCaretPosition(input.length, input.length);
+  syncLayoutCandidates(input);
+
+  if (!candidates) {
+    keyboard.candidateBox?.destroy();
+    return;
+  }
+
+  const { candidateKey, candidateValue } = keyboard.getInputCandidates(input);
+  if (candidateKey && candidateValue) {
+    keyboard.showCandidatesBox(
+      candidateKey,
+      candidateValue,
+      keyboard.keyboardDOM
+    );
+  } else {
+    keyboard.candidateBox?.destroy();
+  }
 }
 
 let keyboard: Keyboard | null = null;
@@ -185,8 +232,13 @@ function applyKeyboardLayout() {
 }
 
 function onChange(input: string) {
-  syncLayoutCandidates(input);
-  emit("onChange", input);
+  const pendingPinyinBeforeUpdate = composeBufferBeforeUpdate;
+
+  if (!isCandidateSelection(pendingPinyinBeforeUpdate, input)) {
+    syncLayoutCandidates(input);
+  }
+
+  emit("onChange", input, pendingPinyinBeforeUpdate);
 }
 
 function onKeyPress(button: string) {
@@ -207,7 +259,7 @@ function onKeyPress(button: string) {
     emit("commitDigit", button);
     keyboard?.setInput("");
     syncLayoutCandidates("");
-    emit("onChange", "");
+    emit("onChange", "", composeBufferBeforeUpdate);
     return;
   }
 
@@ -216,7 +268,7 @@ function onKeyPress(button: string) {
       emit("commitSpace");
       keyboard?.setInput("");
       syncLayoutCandidates("");
-      emit("onChange", "");
+      emit("onChange", "", composeBufferBeforeUpdate);
     } else {
       const current = keyboard?.getInput() ?? "";
       const next = `${current} `;
@@ -262,7 +314,7 @@ function handleShift() {
 }
 
 function onChangeFocus(value: string) {
-  keyboard?.setInput(value);
+  refreshCandidateBox(value);
 }
 
 onMounted(initializeKeyboard);

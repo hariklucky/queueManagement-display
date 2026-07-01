@@ -1,4 +1,4 @@
-/** 身份证读卡器原始返回数据（字段名因厂商而异） */
+/** 身份证读卡器原始返回数据（字段名因厂商而异，兼容旧读卡器） */
 export interface IdCardRawData {
   name?: string
   Name?: string
@@ -22,6 +22,33 @@ export interface IdCardRawData {
   code?: number
   message?: string
   msg?: string
+}
+
+/** 后端读卡接口 data 字段 */
+export interface IdCardReadApiData {
+  name?: string
+  genderCode?: string
+  nationCode?: string
+  birthDate?: string
+  address?: string
+  issueOrg?: string
+  validFrom?: string
+  validTo?: string
+  gender?: string
+  nation?: string
+  cardType?: string
+  cardTypeName?: string
+  infoLen?: number
+  rawHex?: string
+  idNumber?: string
+  idCard?: string
+}
+
+/** 后端读卡接口响应 */
+export interface IdCardReadApiResponse {
+  msg?: string
+  code?: number
+  data?: IdCardReadApiData
 }
 
 /** 标准化后的身份证信息 */

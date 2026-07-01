@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import {
   createWalkinTicket,
   getAppointmentTicketByIdCard,
@@ -35,6 +35,8 @@ import {
   activeInputElement,
   closeOnScreenKeyboard,
   isActiveKeyboardInput,
+  isRecentKeepKeyboardFocusInteraction,
+  KEEP_KEYBOARD_FOCUS_CLASS,
   onScreenKeyboardVisible,
   registerSubmitPassthrough,
   syncKeyboardSessionValue,
@@ -98,22 +100,30 @@ let walkinIdCardAbort: AbortController | null = null;
 let appointmentIdCardAbort: AbortController | null = null;
 let formTipTimer: number | undefined;
 
+function abortWalkinIdCardReadInFlight() {
+  walkinIdCardAbort?.abort()
+  walkinIdCardAbort = null
+}
+
 function cancelWalkinIdCardRead() {
-  walkinIdCardAbort?.abort();
-  walkinIdCardAbort = null;
-  scanWalkinLoading.value = false;
-  walkinIdCardModalVisible.value = false;
+  abortWalkinIdCardReadInFlight()
+  scanWalkinLoading.value = false
+  walkinIdCardModalVisible.value = false
 }
 
 function closeWalkinIdCardModal() {
   cancelWalkinIdCardRead();
 }
 
+function abortAppointmentIdCardReadInFlight() {
+  appointmentIdCardAbort?.abort()
+  appointmentIdCardAbort = null
+}
+
 function cancelAppointmentIdCardRead() {
-  appointmentIdCardAbort?.abort();
-  appointmentIdCardAbort = null;
-  scanIdLoading.value = false;
-  appointmentIdCardModalVisible.value = false;
+  abortAppointmentIdCardReadInFlight()
+  scanIdLoading.value = false
+  appointmentIdCardModalVisible.value = false
 }
 
 function closeAppointmentIdCardModal() {
@@ -316,6 +326,10 @@ function handleBusinessTypeBlur() {
       return;
     }
 
+    if (isRecentKeepKeyboardFocusInteraction()) {
+      return;
+    }
+
     businessTypeDropdownOpen.value = false;
   }, 120);
 }
@@ -442,17 +456,30 @@ function goBackAppointmentQuery() {
 }
 
 async function handleScanId() {
-  if (scanIdLoading.value) return;
+  if (scanIdLoading.value) return
 
-  cancelAppointmentIdCardRead();
-  appointmentIdCardModalVisible.value = true;
-  appointmentIdCardAbort = new AbortController();
-  scanIdLoading.value = true;
+  abortAppointmentIdCardReadInFlight()
+  closeOnScreenKeyboard()
+  activeInputElement.value?.blur()
+
+  appointmentIdCardModalVisible.value = true
+  scanIdLoading.value = true
+  appointmentIdCardAbort = new AbortController()
+  const readSignal = appointmentIdCardAbort.signal
+
+  await waitForIdCardModalPaint()
+
+  if (readSignal.aborted) {
+    scanIdLoading.value = false
+    appointmentIdCardAbort = null
+    return
+  }
 
   try {
     const idCardInfo = await readIdCard({
-      signal: appointmentIdCardAbort.signal,
-    });
+      signal: readSignal,
+      timeoutMs: 10_000,
+    })
 
     appointmentIdCardModalVisible.value = false;
 
@@ -509,43 +536,63 @@ async function handleQueryAppointment() {
   }
 }
 
-async function handleScanIdWalkin() {
-  if (scanWalkinLoading.value) return;
+async function waitForIdCardModalPaint() {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
 
-  cancelWalkinIdCardRead();
-  walkinIdCardModalVisible.value = true;
-  walkinIdCardAbort = new AbortController();
-  scanWalkinLoading.value = true;
+async function handleScanIdWalkin() {
+  if (scanWalkinLoading.value) return
+
+  abortWalkinIdCardReadInFlight()
+  closeOnScreenKeyboard()
+  activeInputElement.value?.blur()
+
+  walkinIdCardModalVisible.value = true
+  scanWalkinLoading.value = true
+  walkinIdCardAbort = new AbortController()
+  const readSignal = walkinIdCardAbort.signal
+
+  await waitForIdCardModalPaint()
+
+  if (readSignal.aborted) {
+    scanWalkinLoading.value = false
+    walkinIdCardAbort = null
+    return
+  }
 
   try {
     const idCardInfo = await readIdCard({
-      signal: walkinIdCardAbort.signal,
-    });
+      signal: readSignal,
+      timeoutMs: 10_000,
+    })
 
-    walkinIdCardInfo.value = idCardInfo;
-    username.value = idCardInfo.name;
+    walkinIdCardInfo.value = idCardInfo
+    username.value = idCardInfo.name
 
     if (idCardInfo.phone) {
-      phone.value = filterDigits(idCardInfo.phone);
+      phone.value = filterDigits(idCardInfo.phone)
     }
 
-    walkinIdCardModalVisible.value = false;
+    walkinIdCardModalVisible.value = false
 
     if (!idCardInfo.name) {
-      alert("未能读取到姓名，请重新放置身份证");
+      alert('未能读取到姓名，请重新放置身份证')
     }
   } catch (error) {
     if (isReadIdCardCancelled(error)) {
-      return;
+      return
     }
 
-    walkinIdCardModalVisible.value = false;
+    walkinIdCardModalVisible.value = false
     alert(
-      getApiErrorMessage(error as Error, "读取身份证失败，请重新放置身份证")
-    );
+      getApiErrorMessage(error as Error, '读取身份证失败，请重新放置身份证')
+    )
   } finally {
-    scanWalkinLoading.value = false;
-    walkinIdCardAbort = null;
+    scanWalkinLoading.value = false
+    walkinIdCardAbort = null
   }
 }
 
@@ -845,7 +892,8 @@ async function handleWalkinSubmit() {
               <div class="relative">
                 <ul
                   v-if="showBusinessTypeDropdown"
-                  class="absolute inset-x-0 bottom-full z-[120] mb-1 box-border max-h-48 w-full overflow-x-hidden overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-[0_-4px_20px_rgba(15,23,42,0.12)]"
+                  :class="KEEP_KEYBOARD_FOCUS_CLASS"
+                  class="absolute inset-x-0 bottom-full z-[120] mb-1 box-border max-h-48 w-full touch-pan-y overflow-x-hidden overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-[0_-4px_20px_rgba(15,23,42,0.12)]"
                   @mousedown.prevent
                 >
                   <li
@@ -889,7 +937,7 @@ async function handleWalkinSubmit() {
                 class="flex-1 rounded-xl border-2 border-primary py-3 font-medium text-primary disabled:cursor-not-allowed disabled:opacity-70"
                 type="button"
                 :disabled="scanWalkinLoading"
-                @click="handleScanIdWalkin"
+                @click.stop="handleScanIdWalkin"
               >
                 <i class="fas fa-id-card mr-2"></i>
                 刷身份证自动填写
@@ -1011,7 +1059,7 @@ async function handleWalkinSubmit() {
     <Teleport to="body">
       <div
         v-if="walkinIdCardModalVisible || appointmentIdCardModalVisible"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 px-4"
       >
         <div
           class="card-shadow w-full max-w-md rounded-2xl bg-white p-8 text-center"

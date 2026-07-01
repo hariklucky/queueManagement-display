@@ -1,8 +1,16 @@
 import { ref, shallowRef } from 'vue'
+import { getPinyinCandidates, split } from 'pinyin-match-hanzi'
 
 export type OnScreenKeyboardType = 'chinese' | 'english' | 'number'
 
+export type ApplyKeyboardChangeResult = {
+  shouldResetBuffer: boolean
+  remainingPinyin: string
+}
+
 export const KEYBOARD_TARGET_CLASS = 'qms-keyboard-target'
+/** 触屏滑动/点击时不关闭键盘、不 blur 输入框的区域（如业务类型下拉） */
+export const KEEP_KEYBOARD_FOCUS_CLASS = 'qms-keep-keyboard-focus'
 const KEYBOARD_OPEN_CLASS = 'qms-keyboard-open'
 
 export const onScreenKeyboardVisible = ref(false)
@@ -31,6 +39,51 @@ function isPinyinComposing(value: string) {
 
 function containsChinese(value: string) {
   return /[\u4e00-\u9fff]/.test(value)
+}
+
+function splitPinyinSyllables(pinyin: string) {
+  if (!isPinyinComposing(pinyin)) {
+    return []
+  }
+
+  const { result } = split(pinyin.toLowerCase())
+  return result ?? []
+}
+
+function findConsumedPinyinLength(pendingPinyin: string, hanzi: string) {
+  if (!pendingPinyin || !hanzi) {
+    return pendingPinyin.length
+  }
+
+  const matchesPrefix = (prefix: string) => {
+    const words = getPinyinCandidates(prefix).map((item) => item.w)
+    return words.includes(hanzi)
+  }
+
+  // 词组选词（如 woqu 选「我去」）优先消耗最长匹配音节
+  if (hanzi.length > 1) {
+    for (let len = pendingPinyin.length; len >= 1; len -= 1) {
+      if (matchesPrefix(pendingPinyin.slice(0, len))) {
+        return len
+      }
+    }
+
+    return pendingPinyin.length
+  }
+
+  // 单字选词：只消耗第一个拼音音节（woqu 选「我」→ wo + qu）
+  const syllables = splitPinyinSyllables(pendingPinyin)
+  if (syllables.length > 0 && matchesPrefix(syllables[0])) {
+    return syllables[0].length
+  }
+
+  for (let len = pendingPinyin.length; len >= 1; len -= 1) {
+    if (matchesPrefix(pendingPinyin.slice(0, len))) {
+      return len
+    }
+  }
+
+  return pendingPinyin.length
 }
 
 function clearKeyboardTargetMark() {
@@ -62,6 +115,14 @@ function focusInputAtEnd(input: HTMLInputElement | HTMLTextAreaElement) {
   } catch {
     // 部分浏览器/输入类型不支持 setSelectionRange
   }
+}
+
+function isKeepKeyboardFocusTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false
+  }
+
+  return Boolean(target.closest(`.${KEEP_KEYBOARD_FOCUS_CLASS}`))
 }
 
 function isKeyboardInteractionTarget(target: EventTarget | null) {
@@ -111,6 +172,10 @@ function handleOutsideDismiss(event: PointerEvent) {
   }
 
   if (isKeyboardInteractionTarget(event.target)) {
+    return
+  }
+
+  if (isKeepKeyboardFocusTarget(event.target)) {
     return
   }
 
@@ -184,7 +249,8 @@ function handleActiveInputBlur() {
     if (
       !(
         lastPointerTarget instanceof Element &&
-        lastPointerTarget.closest('.keyboard-panel, .qms-on-screen-keyboard')
+        (lastPointerTarget.closest('.keyboard-panel, .qms-on-screen-keyboard') ||
+          isKeepKeyboardFocusTarget(lastPointerTarget))
       )
     ) {
       return
@@ -282,38 +348,51 @@ export function closeOnScreenKeyboard() {
 
 /**
  * 处理键盘输出。
- * @returns 是否需要在选字后清空键盘内部缓冲（以便继续输入下一个字）
+ * @param pendingPinyinBeforeUpdate 选字/退格前的键盘拼音缓冲
  */
-export function applyKeyboardChange(value: string): boolean {
+export function applyKeyboardChange(
+  value: string,
+  pendingPinyinBeforeUpdate = ''
+): ApplyKeyboardChangeResult {
   const input = activeInputElement.value
   if (!input) {
-    return false
+    return { shouldResetBuffer: false, remainingPinyin: '' }
   }
 
   if (onScreenKeyboardType.value === 'chinese') {
     if (!value) {
       setInputValue(input, committedText.value)
-      return false
+      return { shouldResetBuffer: false, remainingPinyin: '' }
     }
 
     if (/^[0-9]+$/.test(value)) {
-      return false
+      return { shouldResetBuffer: false, remainingPinyin: '' }
     }
 
     if (isPinyinComposing(value)) {
       setInputValue(input, committedText.value + value)
-      return false
+      return { shouldResetBuffer: false, remainingPinyin: '' }
     }
 
     if (containsChinese(value)) {
+      let remainingPinyin = ''
+
+      if (isPinyinComposing(pendingPinyinBeforeUpdate)) {
+        const consumedLength = findConsumedPinyinLength(
+          pendingPinyinBeforeUpdate,
+          value
+        )
+        remainingPinyin = pendingPinyinBeforeUpdate.slice(consumedLength)
+      }
+
       committedText.value += value
-      setInputValue(input, committedText.value)
-      return true
+      setInputValue(input, committedText.value + remainingPinyin)
+      return { shouldResetBuffer: true, remainingPinyin }
     }
   }
 
   setInputValue(input, committedText.value + value)
-  return false
+  return { shouldResetBuffer: false, remainingPinyin: '' }
 }
 
 export function applyBackspace() {
@@ -402,6 +481,10 @@ export function syncKeyboardSessionValue(value: string) {
 export function syncKeyboardSession(input: HTMLInputElement | HTMLTextAreaElement) {
   markKeyboardTarget(input)
   attachBlurGuard(input)
+}
+
+export function isRecentKeepKeyboardFocusInteraction() {
+  return isKeepKeyboardFocusTarget(lastPointerTarget)
 }
 
 export function isActiveKeyboardInput(

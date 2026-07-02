@@ -22,7 +22,6 @@ import {
   readIdCard,
 } from "../utils/idCardReader";
 import type { IdCardInfo } from "../utils/idCardReader.types";
-import { resolveGatewayId } from "../utils/deviceInfo";
 import { setTerminalInitData, terminalStore } from "../utils/terminalContext";
 import {
   DEFAULT_TICKET_RESULT,
@@ -149,7 +148,6 @@ async function loadTerminalInit() {
   initLoading.value = true;
 
   try {
-    // const gatewayId = await resolveGatewayId()
     const res = await initTerminal();
 
     if (isApiSuccess(res)) {

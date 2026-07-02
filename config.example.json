@@ -1,0 +1,5 @@
+{
+  "apiBaseUrl": "http://192.168.0.101:18084/api",
+  "gatewayId": "",
+  "forceOnScreenKeyboard": true
+}

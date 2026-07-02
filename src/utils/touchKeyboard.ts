@@ -4,6 +4,7 @@ import {
   onScreenKeyboardVisible,
   openOnScreenKeyboard,
 } from './onScreenKeyboard'
+import { shouldForceOnScreenKeyboardFromConfig } from './runtimeConfig'
 
 const INPUT_SELECTOR =
   'input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled])'
@@ -234,7 +235,7 @@ async function invokeTouchKeyboard(source: string) {
 }
 
 function shouldForceOnScreenKeyboard() {
-  return import.meta.env.VITE_FORCE_ON_SCREEN_KEYBOARD === 'true'
+  return shouldForceOnScreenKeyboardFromConfig()
 }
 
 function openFallbackKeyboard() {

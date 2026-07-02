@@ -50,10 +50,16 @@
         "type": "offlineInstaller",
         "silent": true
       },
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsh"
+      },
       "wix": {
         "upgradeCode": "2e2fe057-a585-56a9-9dad-c127e14aacfe",
         "language": ["zh-CN"]
       }
+    },
+    "resources": {
+      "../config.example.json": "config.example.json"
     }
   }
 }

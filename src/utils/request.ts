@@ -2,29 +2,12 @@ import type { RequestClient, RequestConfig } from './request.types'
 import { appFetch } from './httpFetch'
 import { logHttpError, logHttpRequest, logHttpResponse } from './httpLogger'
 import { getBusinessHallId } from './terminalContext'
-import { isTauri } from '@tauri-apps/api/core'
+import { getApiBaseURL } from './runtimeConfig'
 
-function resolveBaseURL() {
-  const configured = import.meta.env.VITE_API_BASE_URL?.trim()
-  const baseURL = configured || '/api'
-
-  if (import.meta.env.PROD && isTauri() && !/^https?:\/\//i.test(baseURL)) {
-    throw new Error(
-      `生产包 API 地址无效（当前：${baseURL}）。` +
-        '请在 .env.production 设置 VITE_API_BASE_URL=http://192.168.0.101:18084/api 后重新 npm run tauri:build。',
-    )
-  }
-
-  return baseURL
-}
-
-const baseURL = resolveBaseURL()
-
-export function getApiBaseURL() {
-  return baseURL
-}
+export { getApiBaseURL }
 
 export function buildApiUrl(url: string, params?: RequestConfig['params']) {
+  const baseURL = getApiBaseURL()
   const path = url.startsWith('http')
     ? url
     : `${baseURL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`
@@ -49,10 +32,12 @@ export function buildApiUrl(url: string, params?: RequestConfig['params']) {
 }
 
 function validateResponseData(data: unknown): unknown {
+  const baseURL = getApiBaseURL()
+
   if (typeof data === 'string' && data.trimStart().startsWith('<!DOCTYPE')) {
     throw new Error(
-      `接口返回了 HTML 页面而非 JSON，请检查 VITE_API_BASE_URL（当前：${baseURL}）。` +
-        '打包后的桌面应用不会走 Vite 代理，需配置为后端完整地址后重新构建。',
+      `接口返回了 HTML 页面而非 JSON，请检查 apiBaseUrl（当前：${baseURL}）。` +
+        '请在应用目录 config.json 中配置正确的后端地址。',
     )
   }
 

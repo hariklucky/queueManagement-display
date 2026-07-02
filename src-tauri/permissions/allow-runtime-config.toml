@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-runtime-config"
+description = "Allows loading runtime config from config.json beside the executable."
+commands.allow = ["load_runtime_config"]

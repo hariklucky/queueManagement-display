@@ -1,4 +1,5 @@
 mod http;
+mod runtime_config;
 mod touch_keyboard;
 
 #[tauri::command]
@@ -16,7 +17,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_device_info::init())
         .plugin(tauri_plugin_shell::init())
-        .setup(|_| {
+        .setup(|app| {
+            runtime_config::ensure_install_config(app.handle());
+
             #[cfg(target_os = "windows")]
             {
                 touch_keyboard::ensure_settings();
@@ -28,7 +31,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             show_touch_keyboard,
             warm_up_touch_keyboard,
-            http::native_http_fetch
+            http::native_http_fetch,
+            runtime_config::load_runtime_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

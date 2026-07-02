@@ -17,6 +17,10 @@ src-tauri/target
 src-tauri/gen/schemas
 .tools
 
+# 本地部署配置（复制 config.example.json 后修改）
+config.json
+public/config.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -27,14 +27,14 @@ fn install_config_path(app: &AppHandle) -> Option<PathBuf> {
     resolve_install_dir(app).map(|dir| dir.join("config.json"))
 }
 
-fn user_config_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
-        .app_config_dir()
-        .ok()
-        .map(|dir| dir.join("config.json"))
-}
-
 fn resolve_example_config_path(app: &AppHandle) -> Option<PathBuf> {
+    if let Some(install_dir) = resolve_install_dir(app) {
+        let install_example = install_dir.join("config.example.json");
+        if install_example.is_file() {
+            return Some(install_example);
+        }
+    }
+
     for key in [
         "../config.example.json",
         "config.example.json",
@@ -74,16 +74,7 @@ fn copy_example_to(config_path: &Path, example_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn locate_existing_config(app: &AppHandle) -> Option<PathBuf> {
-    for path in [install_config_path(app), user_config_path(app)].into_iter().flatten() {
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-    None
-}
-
-fn ensure_config_at(target: &Path, example_path: &Path, label: &str) -> bool {
+fn ensure_config_at(target: &Path, example_path: &Path) -> bool {
     if target.is_file() {
         return true;
     }
@@ -91,14 +82,14 @@ fn ensure_config_at(target: &Path, example_path: &Path, label: &str) -> bool {
     match copy_example_to(target, example_path) {
         Ok(_) => {
             eprintln!(
-                "[QMS] 已在{label}生成 config.json: {}",
+                "[QMS] 已在安装目录生成 config.json: {}",
                 target.display()
             );
             true
         }
         Err(error) => {
             eprintln!(
-                "[QMS] 复制 config.example.json 到{label}失败 {}: {error}",
+                "[QMS] 安装目录写入 config.json 失败 {}: {error}",
                 target.display()
             );
             false
@@ -107,36 +98,44 @@ fn ensure_config_at(target: &Path, example_path: &Path, label: &str) -> bool {
 }
 
 pub fn ensure_install_config(app: &AppHandle) {
-    if let Some(install_dir) = resolve_install_dir(app) {
-        eprintln!("[QMS] 应用安装目录: {}", install_dir.display());
-    }
+    let Some(install_dir) = resolve_install_dir(app) else {
+        eprintln!("[QMS] 无法定位应用安装目录，跳过 config.json 初始化");
+        return;
+    };
 
-    if locate_existing_config(app).is_some() {
+    eprintln!("[QMS] 应用安装目录: {}", install_dir.display());
+
+    let Some(config_path) = install_config_path(app) else {
+        return;
+    };
+
+    if config_path.is_file() {
         return;
     }
 
     let Some(example_path) = resolve_example_config_path(app) else {
-        eprintln!("[QMS] 未找到 config.example.json 模板，无法初始化 config.json");
+        eprintln!(
+            "[QMS] 安装目录未找到 config.example.json 模板，无法初始化 config.json"
+        );
         return;
     };
 
     eprintln!("[QMS] 使用配置模板: {}", example_path.display());
-
-    if let Some(install_path) = install_config_path(app) {
-        if ensure_config_at(&install_path, &example_path, "安装目录") {
-            return;
-        }
-    }
-
-    if let Some(user_path) = user_config_path(app) {
-        ensure_config_at(&user_path, &example_path, "用户配置目录");
-    }
+    ensure_config_at(&config_path, &example_path);
 }
 
 #[tauri::command]
 pub fn load_runtime_config(app: AppHandle) -> RuntimeConfig {
-    let Some(config_path) = locate_existing_config(&app) else {
-        eprintln!("[QMS] 未找到 config.json（已检查安装目录与用户配置目录）");
+    let Some(config_path) = install_config_path(&app) else {
+        eprintln!("[QMS] 无法定位应用安装目录");
+        return RuntimeConfig::default();
+    };
+
+    if !config_path.is_file() {
+        eprintln!(
+            "[QMS] 安装目录未找到 config.json: {}",
+            config_path.display()
+        );
         return RuntimeConfig::default();
     };
 
@@ -144,7 +143,7 @@ pub fn load_runtime_config(app: AppHandle) -> RuntimeConfig {
         Ok(content) => content,
         Err(error) => {
             eprintln!(
-                "[QMS] 读取 config.json 失败 {}: {error}",
+                "[QMS] 读取安装目录 config.json 失败 {}: {error}",
                 config_path.display()
             );
             return RuntimeConfig::default();
@@ -153,12 +152,15 @@ pub fn load_runtime_config(app: AppHandle) -> RuntimeConfig {
 
     match serde_json::from_str::<RuntimeConfig>(&text) {
         Ok(config) => {
-            eprintln!("[QMS] 已加载 config.json: {}", config_path.display());
+            eprintln!(
+                "[QMS] 已加载安装目录 config.json: {}",
+                config_path.display()
+            );
             config
         }
         Err(error) => {
             eprintln!(
-                "[QMS] config.json 解析失败 {}: {error}",
+                "[QMS] 安装目录 config.json 解析失败 {}: {error}",
                 config_path.display()
             );
             RuntimeConfig::default()

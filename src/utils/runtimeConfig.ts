@@ -23,7 +23,7 @@ function validateTauriProductionBaseURL(baseURL: string) {
   if (import.meta.env.PROD && isTauri() && !/^https?:\/\//i.test(baseURL)) {
     throw new Error(
       `生产包 API 地址无效（当前：${baseURL}）。` +
-        '请在安装目录或用户配置目录的 config.json 中设置 apiBaseUrl，例如 http://192.168.0.101:18084/api。',
+        '请在应用安装目录 config.json 中设置 apiBaseUrl，例如 http://192.168.0.101:18084/api。',
     )
   }
 }
@@ -33,7 +33,7 @@ async function loadConfigFromSources() {
     try {
       return await invoke<RuntimeConfig>('load_runtime_config')
     } catch (error) {
-      console.warn('[QMS] 读取 config.json 失败，将使用环境变量兜底', error)
+      console.warn('[QMS] 读取安装目录 config.json 失败，将使用环境变量兜底', error)
       return {}
     }
   }
@@ -54,7 +54,7 @@ export async function initRuntimeConfig() {
   validateTauriProductionBaseURL(apiBaseURL)
 
   if (fromFile) {
-    console.info('[QMS] 使用 config.json 中的 apiBaseUrl:', apiBaseURL)
+    console.info('[QMS] 使用安装目录 config.json 中的 apiBaseUrl:', apiBaseURL)
   } else {
     console.info('[QMS] 使用环境变量 VITE_API_BASE_URL:', apiBaseURL)
   }

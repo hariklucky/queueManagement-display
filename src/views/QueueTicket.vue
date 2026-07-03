@@ -40,6 +40,7 @@ import {
   registerSubmitPassthrough,
   syncKeyboardSessionValue,
 } from "../utils/onScreenKeyboard";
+import { cancelSpeech, speakWelcome } from "../utils/tts";
 
 const businessTypes = computed(() => terminalStore.businessTypes);
 
@@ -170,9 +171,15 @@ async function loadTerminalInit() {
   }
 }
 
-onMounted(loadTerminalInit);
+onMounted(() => {
+  void loadTerminalInit();
+  window.setInterval(() => {
+    void speakWelcome("欢迎使用");
+  }, 3000);
+});
 
 onUnmounted(() => {
+  cancelSpeech();
   cancelAllIdCardReads();
   registerSubmitPassthrough(null, null);
   window.clearTimeout(formTipTimer);

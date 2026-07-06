@@ -15,7 +15,6 @@
     "allow-touch-keyboard",
     "allow-native-http-fetch",
     "allow-runtime-config",
-    "allow-native-tts",
     "shell:allow-open",
     "device-info:default"
   ]

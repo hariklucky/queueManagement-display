@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-native-tts"
-description = "Allows using Windows native text-to-speech."
-commands.allow = ["native_speak_text", "native_cancel_speech"]

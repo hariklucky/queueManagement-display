@@ -171,14 +171,17 @@ async function loadTerminalInit() {
   }
 }
 
+let welcomeSpeechTimer = 0;
+
 onMounted(() => {
   void loadTerminalInit();
-  window.setInterval(() => {
+  welcomeSpeechTimer = window.setTimeout(() => {
     void speakWelcome("欢迎使用");
-  }, 3000);
+  }, 500);
 });
 
 onUnmounted(() => {
+  window.clearTimeout(welcomeSpeechTimer);
   cancelSpeech();
   cancelAllIdCardReads();
   registerSubmitPassthrough(null, null);

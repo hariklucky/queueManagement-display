@@ -1,6 +1,7 @@
 mod http;
 mod runtime_config;
 mod touch_keyboard;
+mod tts;
 
 #[tauri::command]
 fn show_touch_keyboard() -> touch_keyboard::TouchKeyboardResult {
@@ -32,7 +33,9 @@ pub fn run() {
             show_touch_keyboard,
             warm_up_touch_keyboard,
             http::native_http_fetch,
-            runtime_config::load_runtime_config
+            runtime_config::load_runtime_config,
+            tts::native_speak_text,
+            tts::native_cancel_speech
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

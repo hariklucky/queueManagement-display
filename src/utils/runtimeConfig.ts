@@ -75,7 +75,7 @@ export function getApiBaseURL() {
 }
 
 export function getRuntimeGatewayId() {
-  return runtimeConfig.gatewayId?.trim() || import.meta.env.VITE_GATEWAY_ID?.trim() || ''
+  return runtimeConfig.gatewayId?.trim() || ''
 }
 
 export function shouldForceOnScreenKeyboardFromConfig() {

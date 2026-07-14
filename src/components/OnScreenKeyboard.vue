@@ -139,11 +139,11 @@ onUnmounted(teardownKeyboardOutsideDismiss)
     rgba(15, 23, 42, 0.08) 30%,
     rgba(15, 23, 42, 0.18) 100%
   );
-  backdrop-filter: blur(2px);
 }
 
 .keyboard-panel {
   animation: keyboard-slide-up 0.22s ease-out;
+  will-change: transform, opacity;
 }
 
 @keyframes keyboard-slide-up {

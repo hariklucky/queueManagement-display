@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import { getPinyinCandidates, split } from 'pinyin-match-hanzi'
+import { cancelPendingSystemKeyboardInvoke } from './keyboardInvoke'
 
 export type OnScreenKeyboardType = 'chinese' | 'english' | 'number'
 
@@ -26,6 +27,7 @@ let blurGuardInput: HTMLInputElement | HTMLTextAreaElement | null = null
 let blurGuardToken = 0
 let lastPointerTarget: EventTarget | null = null
 let outsideDismissInstalled = false
+let lockedScrollY = 0
 
 function resolveKeyboardType(
   _input: HTMLInputElement | HTMLTextAreaElement
@@ -98,7 +100,33 @@ function markKeyboardTarget(input: HTMLInputElement | HTMLTextAreaElement) {
 }
 
 function setKeyboardOpenScrollLock(locked: boolean) {
-  document.documentElement.classList.toggle(KEYBOARD_OPEN_CLASS, locked)
+  const root = document.documentElement
+  const body = document.body
+
+  root.classList.toggle(KEYBOARD_OPEN_CLASS, locked)
+
+  if (locked) {
+    lockedScrollY = window.scrollY
+    body.style.position = 'fixed'
+    body.style.top = `-${lockedScrollY}px`
+    body.style.left = '0'
+    body.style.right = '0'
+    body.style.width = '100%'
+    body.style.overflow = 'hidden'
+    return
+  }
+
+  body.style.position = ''
+  body.style.top = ''
+  body.style.left = ''
+  body.style.right = ''
+  body.style.width = ''
+  body.style.overflow = ''
+
+  if (lockedScrollY > 0) {
+    window.scrollTo(0, lockedScrollY)
+  }
+  lockedScrollY = 0
 }
 
 function focusInputAtEnd(input: HTMLInputElement | HTMLTextAreaElement) {
@@ -311,6 +339,8 @@ export function setInputValue(
 export function openOnScreenKeyboard(
   input: HTMLInputElement | HTMLTextAreaElement
 ) {
+  cancelPendingSystemKeyboardInvoke()
+
   const isSameActiveInput =
     onScreenKeyboardVisible.value && activeInputElement.value === input
 
@@ -338,6 +368,7 @@ export function openOnScreenKeyboard(
 }
 
 export function closeOnScreenKeyboard() {
+  cancelPendingSystemKeyboardInvoke()
   detachBlurGuard()
   clearKeyboardTargetMark()
   setKeyboardOpenScrollLock(false)

@@ -6,6 +6,10 @@
   --font-sans: 'Microsoft YaHei', 'Segoe UI', 'Noto Sans SC', sans-serif;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   font-family: 'Microsoft YaHei', 'Segoe UI', 'Noto Sans SC', sans-serif;
@@ -30,6 +34,5 @@ textarea.qms-keyboard-target {
 
 /* 虚拟键盘打开时不滚动页面，避免表单被顶上去 */
 html.qms-keyboard-open {
-  overflow: hidden;
   overscroll-behavior: none;
 }

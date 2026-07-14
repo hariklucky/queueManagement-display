@@ -1,5 +1,9 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import {
+  cancelPendingSystemKeyboardInvoke,
+  scheduleSystemKeyboardInvoke,
+} from './keyboardInvoke'
+import {
   activeInputElement as keyboardActiveInput,
   onScreenKeyboardVisible,
   openOnScreenKeyboard,
@@ -258,9 +262,6 @@ async function showTouchKeyboard(source: string) {
 
   if (onScreenKeyboardVisible.value) {
     logTouchKeyboard('应用内键盘已展示，跳过重复唤起', { source })
-    if (activeInput) {
-      openOnScreenKeyboard(activeInput)
-    }
     return
   }
 
@@ -337,6 +338,7 @@ function handleInputActivate(event: Event) {
   })
 
   if (shouldOpenOnScreenKeyboardImmediately(input)) {
+    cancelPendingSystemKeyboardInvoke()
     openOnScreenKeyboard(input)
     return
   }
@@ -349,7 +351,8 @@ function handleInputActivate(event: Event) {
     prepareInputForTouchKeyboard(input)
   }
 
-  window.setTimeout(() => {
+  cancelPendingSystemKeyboardInvoke()
+  scheduleSystemKeyboardInvoke(() => {
     void showTouchKeyboard(event.type)
   }, KEYBOARD_INVOKE_DELAY_MS)
 }

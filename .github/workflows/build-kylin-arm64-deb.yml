@@ -34,9 +34,17 @@ jobs:
       - name: Build arm64 deb
         run: npm run tauri:build:kylin:deb:arm64
 
+      - name: List bundle output
+        run: |
+          echo "=== deb 目录 ==="
+          ls -laR src-tauri/target/release/bundle/ || true
+          echo "=== 查找 .deb 文件 ==="
+          find src-tauri/target -name "*.deb" -type f
+
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: kylin-arm64-deb
-          path: src-tauri/target/release/bundle/deb/*.deb
+          path: src-tauri/target/release/bundle/deb/
+          retention-days: 30
           if-no-files-found: error

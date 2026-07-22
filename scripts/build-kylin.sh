@@ -254,6 +254,14 @@ fi
 echo "开始打包麒麟环境安装包（arch: ${KYLIN_ARCH}, bundles: ${BUNDLES}）..."
 npm run tauri -- build --bundles "$BUNDLES" "${TARGET_ARGS[@]}" "${EXTRA_ARGS[@]}"
 
+if [[ "$BUNDLES" == "appimage" && "${KYLIN_APPIMAGE_GLIBC_COMPAT:-1}" == "1" ]]; then
+  appimage_file="$(find "$BUNDLE_DIR" -name "*.AppImage" -type f | head -n 1 || true)"
+  if [[ -n "$appimage_file" && -f "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" ]]; then
+    echo "正在为 glibc 2.31 兼容重新打包 AppImage..."
+    bash "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" "$appimage_file" "$appimage_file"
+  fi
+fi
+
 cat <<EOF
 
 打包完成，安装包输出目录：
@@ -272,4 +280,8 @@ cat <<EOF
 运行示例（AppImage，适合仅有 WebKit 4.0 的麒麟终端）：
   chmod +x ${BUNDLE_DIR}/appimage/*.AppImage
   ${BUNDLE_DIR}/appimage/*.AppImage
+
+若双击无反应，请先安装 FUSE 2 或在终端运行：
+  sudo apt install -y libfuse2
+  APPIMAGE_EXTRACT_AND_RUN=1 ${BUNDLE_DIR}/appimage/*.AppImage
 EOF

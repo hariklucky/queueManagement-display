@@ -36,11 +36,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      # AppImage 自带 WebKit 等库，适合仅有 WebKit 4.0 的麒麟终端
+      # AppImage 自带 WebKit 等库，适合仅有 WebKit 4.0 的麒麟终端。
+      # 构建后 repack 会 bundled glibc，兼容 glibc 2.31（银河麒麟 V10）。
       - name: Build arm64 AppImage
         run: npm run tauri:build:kylin:appimage:arm64
 
-      - name: Verify and prepare AppImage artifact
+      - name: Repack AppImage for glibc 2.31 compatibility
         run: |
           echo "=== 查找 AppImage 文件 ==="
           find src-tauri/target -name "*.AppImage" -type f -print
@@ -51,6 +52,13 @@ jobs:
             exit 1
           fi
           echo "找到 AppImage: $appimage_file"
+          chmod +x scripts/repack-appimage-glibc-compat.sh scripts/verify-appimage-glibc.sh
+          bash scripts/repack-appimage-glibc-compat.sh "$appimage_file" "$appimage_file"
+          bash scripts/verify-appimage-glibc.sh "$appimage_file"
+
+      - name: Prepare AppImage artifact
+        run: |
+          appimage_file="$(find src-tauri/target -name "*.AppImage" -type f | head -n 1)"
           mkdir -p artifact
           cp "$appimage_file" artifact/
           chmod +x artifact/*

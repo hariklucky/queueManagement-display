@@ -98,13 +98,14 @@ if [[ -d "$APP_DIR/usr/share/icons" ]]; then
 fi
 
 mkdir -p "$PKG_ROOT/DEBIAN"
+# 自包含安装包不声明 WebKit/GTK 依赖，避免麒麟软件源包名不一致导致安装失败。
+# 仅保留 libc6，各 Debian 系发行版均存在。
 cat > "$PKG_ROOT/DEBIAN/control" <<EOF
 Package: ${PACKAGE_NAME}
 Version: ${VERSION}
 Architecture: ${DEB_ARCH}
 Maintainer: QMS <qms@local>
-Depends: libgtk-3-0, libx11-6, libglib2.0-0
-Recommends: libwebkit2gtk-4.0-37 | libwebkit2gtk-4.0-37-gtk
+Depends: libc6 (>= 2.17)
 Section: utils
 Priority: optional
 Description: ${SHORT_DESC}
@@ -113,7 +114,8 @@ Description: ${SHORT_DESC}
 EOF
 
 DEB_FILE="$OUTPUT_DIR/${PACKAGE_NAME}_${VERSION}_${DEB_ARCH}.deb"
-dpkg-deb --build --root-owner-group "$PKG_ROOT" "$DEB_FILE"
+# 必须使用 gzip：Ubuntu 22.04 默认 zstd，银河麒麟 V10 的 dpkg 无法解压 control.tar.zst / data.tar.zst。
+dpkg-deb -Zgzip --build --root-owner-group "$PKG_ROOT" "$DEB_FILE"
 
 echo "=== 完成：已生成麒麟兼容 deb ==="
 echo "  $DEB_FILE"

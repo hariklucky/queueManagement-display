@@ -1,4 +1,4 @@
-name: Build Kylin ARM64 DEB
+name: Build Kylin ARM64 Linux
 
 on:
   workflow_dispatch:
@@ -37,34 +37,46 @@ jobs:
         run: npm ci
 
       # 先打 AppImage（自带 WebKit），再 repack glibc 并封装 deb，适配 glibc 2.31 + WebKit 4.0 麒麟终端。
-      - name: Build arm64 Kylin deb
+      - name: Build arm64 Kylin packages
         env:
           KYLIN_DEB_FROM_APPIMAGE: "1"
           KYLIN_APPIMAGE_GLIBC_COMPAT: "1"
         run: npm run tauri:build:kylin:deb:arm64
 
-      - name: Verify deb Kylin compatibility
+      - name: Verify Kylin compatibility
         run: |
           deb_file="$(find src-tauri/target/release/bundle/deb -name "*.deb" -type f | head -n 1)"
+          appimage_file="$(find src-tauri/target -name "*.AppImage" -type f | head -n 1)"
           if [ -z "$deb_file" ]; then
             echo "错误：未找到 deb 安装包"
             ls -laR src-tauri/target/release/bundle/ || true
             exit 1
           fi
-          chmod +x scripts/verify-deb-kylin-compat.sh
+          if [ -z "$appimage_file" ]; then
+            echo "错误：未找到 AppImage"
+            ls -laR src-tauri/target/release/bundle/ || true
+            exit 1
+          fi
+          chmod +x scripts/verify-deb-kylin-compat.sh scripts/verify-appimage-glibc.sh
           bash scripts/verify-deb-kylin-compat.sh "$deb_file"
+          bash scripts/verify-appimage-glibc.sh "$appimage_file"
+          echo "deb 压缩格式:"
+          ar t "$deb_file"
 
-      - name: Prepare deb artifact
+      - name: Prepare artifacts
         run: |
           deb_file="$(find src-tauri/target/release/bundle/deb -name "*.deb" -type f | head -n 1)"
+          appimage_file="$(find src-tauri/target -name "*.AppImage" -type f | head -n 1)"
           mkdir -p artifact
           cp "$deb_file" artifact/
+          cp "$appimage_file" artifact/
+          chmod +x artifact/*
           ls -la artifact/
 
-      - name: Upload deb artifact
+      - name: Upload Kylin packages
         uses: actions/upload-artifact@v4
         with:
-          name: kylin-arm64-deb
+          name: kylin-arm64-packages
           path: artifact/
           retention-days: 30
           if-no-files-found: error

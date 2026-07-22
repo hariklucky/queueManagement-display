@@ -39,21 +39,20 @@ jobs:
       # AppImage 自带 WebKit 等库，适合仅有 WebKit 4.0 的麒麟终端。
       # 构建后 repack 会 bundled glibc，兼容 glibc 2.31（银河麒麟 V10）。
       - name: Build arm64 AppImage
+        env:
+          # build-kylin.sh 内已做 glibc 兼容 repack，避免 workflow 重复执行
+          KYLIN_APPIMAGE_GLIBC_COMPAT: "1"
         run: npm run tauri:build:kylin:appimage:arm64
 
-      - name: Repack AppImage for glibc 2.31 compatibility
+      - name: Verify AppImage glibc compatibility
         run: |
-          echo "=== 查找 AppImage 文件 ==="
-          find src-tauri/target -name "*.AppImage" -type f -print
           appimage_file="$(find src-tauri/target -name "*.AppImage" -type f | head -n 1)"
           if [ -z "$appimage_file" ]; then
             echo "错误：未找到 AppImage"
             ls -laR src-tauri/target/release/bundle/ || true
             exit 1
           fi
-          echo "找到 AppImage: $appimage_file"
-          chmod +x scripts/repack-appimage-glibc-compat.sh scripts/verify-appimage-glibc.sh
-          bash scripts/repack-appimage-glibc-compat.sh "$appimage_file" "$appimage_file"
+          chmod +x scripts/verify-appimage-glibc.sh
           bash scripts/verify-appimage-glibc.sh "$appimage_file"
 
       - name: Prepare AppImage artifact

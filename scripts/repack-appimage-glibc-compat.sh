@@ -5,6 +5,17 @@ set -euo pipefail
 
 APPIMAGE="${1:?用法: $0 <input.AppImage> [output.AppImage]}"
 OUTPUT="${2:-$APPIMAGE}"
+
+if [[ ! -f "$APPIMAGE" ]]; then
+  echo "错误：找不到 AppImage: $APPIMAGE" >&2
+  exit 1
+fi
+
+APPIMAGE="$(readlink -f "$APPIMAGE")"
+if [[ "$OUTPUT" != /* ]]; then
+  OUTPUT="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
+fi
+
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
@@ -32,6 +43,7 @@ if [[ ! -f "$APPIMAGE" ]]; then
 fi
 
 echo "=== 解压 AppImage ==="
+echo "输入: $APPIMAGE"
 cd "$WORKDIR"
 chmod +x "$APPIMAGE"
 APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" --appimage-extract
@@ -126,14 +138,13 @@ else
   chmod +x "$APPIMAGETOOL"
 fi
 
-OUTPUT_ABS="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
 OUTPUT_TMP="$WORKDIR/$(basename "$OUTPUT")"
 
 echo "=== 重新打包 AppImage ==="
 ARCH="$APPIMAGE_ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGETOOL" "$ROOT" "$OUTPUT_TMP"
 chmod +x "$OUTPUT_TMP"
-mv "$OUTPUT_TMP" "$OUTPUT_ABS"
+mv "$OUTPUT_TMP" "$OUTPUT"
 
 echo "=== 完成：已生成兼容旧版 glibc 的 AppImage ==="
-echo "  $OUTPUT_ABS"
+echo "  $OUTPUT"
 echo "  bundled glibc: $(ls -1 "$COMPAT_DIR" | wc -l | tr -d ' ') 个库文件"

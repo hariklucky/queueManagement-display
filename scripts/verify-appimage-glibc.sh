@@ -3,6 +3,12 @@
 set -euo pipefail
 
 APPIMAGE="${1:?用法: $0 <AppImage>}"
+if [[ ! -f "$APPIMAGE" ]]; then
+  echo "错误：找不到 AppImage: $APPIMAGE" >&2
+  exit 1
+fi
+APPIMAGE="$(readlink -f "$APPIMAGE")"
+
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 

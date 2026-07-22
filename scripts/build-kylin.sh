@@ -255,8 +255,8 @@ echo "开始打包麒麟环境安装包（arch: ${KYLIN_ARCH}, bundles: ${BUNDLE
 npm run tauri -- build --bundles "$BUNDLES" "${TARGET_ARGS[@]}" "${EXTRA_ARGS[@]}"
 
 if [[ "$BUNDLES" == "appimage" && "${KYLIN_APPIMAGE_GLIBC_COMPAT:-1}" == "1" ]]; then
-  appimage_file="$(find "$BUNDLE_DIR" -name "*.AppImage" -type f | head -n 1 || true)"
-  if [[ -n "$appimage_file" && -f "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" ]]; then
+  appimage_file="$(find "$ROOT_DIR/$BUNDLE_DIR" -name "*.AppImage" -type f | head -n 1 || true)"
+  if [[ -n "$appimage_file" && -f "$appimage_file" && -f "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" ]]; then
     echo "正在为 glibc 2.31 兼容重新打包 AppImage..."
     bash "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" "$appimage_file" "$appimage_file"
   fi

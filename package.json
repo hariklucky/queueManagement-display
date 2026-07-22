@@ -21,11 +21,15 @@
     "tauri:build:win:nobundle": "bash scripts/build-win.sh --no-bundle",
     "tauri:build:kylin": "bash scripts/build-kylin.sh",
     "tauri:build:kylin:deb": "bash scripts/build-kylin.sh --deb",
+    "tauri:build:kylin:deb:arm64": "bash scripts/build-kylin.sh --deb --arm64",
+    "tauri:build:kylin:deb:amd64": "bash scripts/build-kylin.sh --deb --amd64",
     "tauri:build:kylin:rpm": "bash scripts/build-kylin.sh --rpm",
     "tauri:build:kylin:all": "bash scripts/build-kylin.sh --all",
     "tauri:build:kylin:nobundle": "bash scripts/build-kylin.sh --no-bundle",
     "tauri:build:kylin:docker": "bash scripts/build-kylin-docker.sh",
-    "tauri:build:kylin:cn": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin.sh"
+    "tauri:build:kylin:cn": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin.sh",
+    "tauri:build:kylin:deb:arm64:cn": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin.sh --deb --arm64",
+    "tauri:build:kylin:deb:arm64:cn:rebuild": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin-docker.sh --arm64 --rebuild-image"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

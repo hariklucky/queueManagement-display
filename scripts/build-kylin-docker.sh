@@ -4,13 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-IMAGE_NAME="${KYLIN_DOCKER_IMAGE:-qms-kylin-builder}"
+KYLIN_ARCH="${KYLIN_ARCH:-amd64}"
+IMAGE_NAME="${KYLIN_DOCKER_IMAGE:-}"
 DOCKERFILE="$ROOT_DIR/docker/Dockerfile.kylin"
 # 国内拉取 Docker Hub 超时时，可设置镜像基础镜像：
 #   export KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04
 BASE_IMAGE="${KYLIN_DOCKER_BASE_IMAGE:-ubuntu:22.04}"
-# 麒麟终端多为 x86_64；Apple Silicon Mac 需显式指定 amd64
-PLATFORM="${KYLIN_DOCKER_PLATFORM:-linux/amd64}"
 REBUILD_IMAGE=0
 PASSTHROUGH_ARGS=()
 
@@ -18,6 +17,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --rebuild-image)
       REBUILD_IMAGE=1
+      shift
+      ;;
+    --arm64)
+      KYLIN_ARCH="arm64"
+      shift
+      ;;
+    --amd64)
+      KYLIN_ARCH="amd64"
       shift
       ;;
     --rpm|--all)
@@ -39,6 +46,53 @@ EOF
       ;;
   esac
 done
+
+case "$KYLIN_ARCH" in
+  arm64)
+    PLATFORM="${KYLIN_DOCKER_PLATFORM:-linux/arm64}"
+    ;;
+  amd64)
+    PLATFORM="${KYLIN_DOCKER_PLATFORM:-linux/amd64}"
+    ;;
+  *)
+    echo "错误：不支持的架构 \"${KYLIN_ARCH}\"，可选：arm64、amd64"
+    exit 1
+    ;;
+esac
+
+if [[ -z "$IMAGE_NAME" ]]; then
+  IMAGE_NAME="qms-kylin-builder-${KYLIN_ARCH}"
+fi
+
+if [[ "$KYLIN_ARCH" == "arm64" && "$(uname -m)" == "x86_64" && -z "${KYLIN_ALLOW_INTEL_QEMU:-}" ]]; then
+  cat <<'EOF'
+错误：Intel Mac 无法可靠地通过 Docker/QEMU 构建 arm64 deb。
+日志中若出现 "qemu: uncaught target signal 11" / "libc-bin" 即为该问题。
+
+请改用以下方案之一：
+
+【方案 1】在 arm64 麒麟终端本机打包（最推荐）
+  npm install && npm run tauri:build:kylin:deb:arm64
+
+【方案 2】GitHub Actions 云构建 arm64 deb
+  1. 推送代码到 GitHub
+  2. 打开 Actions → "Build Kylin ARM64 DEB" → Run workflow
+  3. 在 Artifacts 中下载 .deb
+
+【方案 3】Apple Silicon Mac 或云 ARM64 服务器
+
+若仍要强行尝试 QEMU（通常仍会失败，每次约 8 分钟）：
+  KYLIN_ALLOW_INTEL_QEMU=1 npm run tauri:build:kylin:deb:arm64:cn
+EOF
+  exit 1
+fi
+
+if [[ "$KYLIN_ARCH" == "arm64" && "$(uname -m)" == "x86_64" ]]; then
+  cat <<'EOF'
+警告：当前为 Intel Mac（x86_64），Docker 需通过 QEMU 模拟 arm64。
+该方式构建极慢，且 apt 安装阶段可能出现 Segmentation fault（libc-bin 配置失败）。
+EOF
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
   cat <<'EOF'
@@ -71,9 +125,16 @@ if [[ "$REBUILD_IMAGE" -eq 1 ]] || ! docker image inspect "$IMAGE_NAME" >/dev/nu
     -t "$IMAGE_NAME" -f "$DOCKERFILE" "$ROOT_DIR"; then
     cat <<EOF
 
-错误：构建 Docker 镜像失败，常见原因是无法访问 Docker Hub（auth.docker.io 超时）。
+错误：构建 Docker 镜像失败。
 
-请任选一种方式解决后重试：
+常见原因：
+1. 无法访问 Docker Hub（auth.docker.io 超时）
+2. Intel Mac 通过 QEMU 模拟 arm64 时 apt 段错误（日志含 "qemu: uncaught target signal 11"）
+
+若为 QEMU 段错误，请改用 arm64 麒麟终端 / Apple Silicon Mac / 云 ARM64 环境打包：
+  npm run tauri:build:kylin:deb:arm64
+
+若为 Docker Hub 超时，请任选一种方式解决后重试：
 
 【方式 1】Docker Desktop 配置镜像加速（推荐，一次配置长期有效）
   1. 打开 Docker Desktop → Settings → Docker Engine
@@ -85,54 +146,61 @@ if [[ "$REBUILD_IMAGE" -eq 1 ]] || ! docker image inspect "$IMAGE_NAME" >/dev/nu
        ]
      }
   3. 点击 Apply & Restart，然后重试：
-     npm run tauri:build:kylin
+     npm run tauri:build:kylin:deb:${KYLIN_ARCH}
 
 【方式 2】使用国内基础镜像直接打包
-  npm run tauri:build:kylin:cn
+  npm run tauri:build:kylin:deb:${KYLIN_ARCH}:cn
 
 【方式 3】手动指定基础镜像
-  KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 npm run tauri:build:kylin
+  KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 npm run tauri:build:kylin:deb:${KYLIN_ARCH}
 EOF
     exit 1
   fi
 fi
 
-echo "在 Docker 容器中打包 deb 安装包（platform=${PLATFORM}）..."
+DOCKER_NODE_MODULES_VOLUME="qms-kylin-node-modules-${KYLIN_ARCH}"
+DOCKER_NPM_CACHE_VOLUME="qms-kylin-npm-cache-${KYLIN_ARCH}"
+DOCKER_CARGO_REGISTRY_VOLUME="qms-kylin-cargo-registry-${KYLIN_ARCH}"
+DOCKER_CARGO_GIT_VOLUME="qms-kylin-cargo-git-${KYLIN_ARCH}"
+
+echo "在 Docker 容器中打包 deb 安装包（arch=${KYLIN_ARCH}, platform=${PLATFORM}）..."
 if ((${#PASSTHROUGH_ARGS[@]} > 0)); then
   docker run --rm \
     --platform "$PLATFORM" \
     -v "$ROOT_DIR:/app" \
-    -v qms-kylin-node-modules:/app/node_modules \
-    -v qms-kylin-npm-cache:/root/.npm \
-    -v qms-kylin-cargo-registry:/usr/local/cargo/registry \
-    -v qms-kylin-cargo-git:/usr/local/cargo/git \
+    -v "${DOCKER_NODE_MODULES_VOLUME}:/app/node_modules" \
+    -v "${DOCKER_NPM_CACHE_VOLUME}:/root/.npm" \
+    -v "${DOCKER_CARGO_REGISTRY_VOLUME}:/usr/local/cargo/registry" \
+    -v "${DOCKER_CARGO_GIT_VOLUME}:/usr/local/cargo/git" \
     -w /app \
     -e KYLIN_IN_DOCKER=1 \
     -e KYLIN_BUNDLES=deb \
+    -e KYLIN_ARCH="$KYLIN_ARCH" \
     "$IMAGE_NAME" \
-    bash -c 'npm install && exec bash scripts/build-kylin.sh --deb "$@"' _ "${PASSTHROUGH_ARGS[@]}"
+    bash -c 'npm install && exec bash scripts/build-kylin.sh --deb --'"${KYLIN_ARCH}"' "$@"' _ "${PASSTHROUGH_ARGS[@]}"
 else
   docker run --rm \
     --platform "$PLATFORM" \
     -v "$ROOT_DIR:/app" \
-    -v qms-kylin-node-modules:/app/node_modules \
-    -v qms-kylin-npm-cache:/root/.npm \
-    -v qms-kylin-cargo-registry:/usr/local/cargo/registry \
-    -v qms-kylin-cargo-git:/usr/local/cargo/git \
+    -v "${DOCKER_NODE_MODULES_VOLUME}:/app/node_modules" \
+    -v "${DOCKER_NPM_CACHE_VOLUME}:/root/.npm" \
+    -v "${DOCKER_CARGO_REGISTRY_VOLUME}:/usr/local/cargo/registry" \
+    -v "${DOCKER_CARGO_GIT_VOLUME}:/usr/local/cargo/git" \
     -w /app \
     -e KYLIN_IN_DOCKER=1 \
     -e KYLIN_BUNDLES=deb \
+    -e KYLIN_ARCH="$KYLIN_ARCH" \
     "$IMAGE_NAME" \
-    bash -c 'npm install && exec bash scripts/build-kylin.sh --deb'
+    bash -c 'npm install && exec bash scripts/build-kylin.sh --deb --'"${KYLIN_ARCH}"
 fi
 
 cat <<EOF
 
-Docker 打包完成，安装包输出目录：
+Docker 打包完成（${KYLIN_ARCH}），安装包输出目录：
 
   src-tauri/target/release/bundle/deb/
 
-安装示例（在麒麟终端上）：
+安装示例（在 ${KYLIN_ARCH} 麒麟终端上）：
   sudo dpkg -i src-tauri/target/release/bundle/deb/*.deb
   sudo apt install -f -y
 EOF

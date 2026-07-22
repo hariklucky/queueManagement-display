@@ -5,7 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 BUNDLES="${KYLIN_BUNDLES:-deb}"
+KYLIN_ARCH="${KYLIN_ARCH:-}"
 EXTRA_ARGS=()
+TARGET_ARGS=()
+RUST_TARGET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,6 +28,14 @@ while [[ $# -gt 0 ]]; do
       BUNDLES="deb,rpm"
       shift
       ;;
+    --arm64)
+      KYLIN_ARCH="arm64"
+      shift
+      ;;
+    --amd64)
+      KYLIN_ARCH="amd64"
+      shift
+      ;;
     --no-bundle)
       EXTRA_ARGS+=(--no-bundle)
       shift
@@ -36,8 +47,95 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+normalize_arch() {
+  case "$1" in
+    aarch64|arm64) echo "arm64" ;;
+    x86_64|amd64) echo "amd64" ;;
+    *)
+      echo "错误：无法识别 CPU 架构 \"${1}\"。" >&2
+      exit 1
+      ;;
+  esac
+}
+
+if [[ -z "$KYLIN_ARCH" ]]; then
+  KYLIN_ARCH="$(normalize_arch "$(uname -m)")"
+fi
+
+# macOS / Windows 无法本机打 Linux deb，优先走 Docker（必须在交叉编译逻辑之前）
 if [[ "$(uname -s)" != "Linux" && -z "${KYLIN_IN_DOCKER:-}" ]]; then
-  exec "$ROOT_DIR/scripts/build-kylin-docker.sh" "$@"
+  DOCKER_ARGS=()
+  case "$BUNDLES" in
+    deb) DOCKER_ARGS+=(--deb) ;;
+    rpm) DOCKER_ARGS+=(--rpm) ;;
+    deb,rpm) DOCKER_ARGS+=(--all) ;;
+  esac
+  case "$KYLIN_ARCH" in
+    arm64) DOCKER_ARGS+=(--arm64) ;;
+    amd64) DOCKER_ARGS+=(--amd64) ;;
+  esac
+  if ((${#EXTRA_ARGS[@]} > 0)); then
+    DOCKER_ARGS+=("${EXTRA_ARGS[@]}")
+  fi
+  exec "$ROOT_DIR/scripts/build-kylin-docker.sh" "${DOCKER_ARGS[@]}"
+fi
+
+HOST_ARCH="$(normalize_arch "$(uname -m)")"
+
+setup_arm64_cross_compile() {
+  if ! rustup target list --installed | grep -q '^aarch64-unknown-linux-gnu$'; then
+    echo "安装 Rust 交叉编译目标 aarch64-unknown-linux-gnu..."
+    rustup target add aarch64-unknown-linux-gnu
+  fi
+
+  if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+    cat <<'EOF'
+错误：未找到 aarch64-linux-gnu-gcc，无法在 x86_64 本机交叉编译 arm64 安装包。
+
+推荐方案（任选其一）：
+1. macOS / Windows 使用 Docker 打 arm64 deb：
+     npm run tauri:build:kylin:deb:arm64
+
+2. 在 arm64 麒麟终端本机执行：
+     npm run tauri:build:kylin:deb:arm64
+
+3. 在 x86 Linux 安装交叉编译工具链后重试：
+     sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+EOF
+    exit 1
+  fi
+
+  export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+  export PKG_CONFIG_ALLOW_CROSS=1
+
+  cat <<'EOF'
+警告：在 x86_64 上交叉编译 arm64 可能因 WebKitGTK 原生依赖失败。
+若构建报错，请改用 Docker 或在 arm64 麒麟终端本机打包。
+EOF
+}
+
+if [[ "$KYLIN_ARCH" != "$HOST_ARCH" ]]; then
+  case "$KYLIN_ARCH" in
+    arm64)
+      RUST_TARGET="aarch64-unknown-linux-gnu"
+      setup_arm64_cross_compile
+      ;;
+    amd64)
+      RUST_TARGET="x86_64-unknown-linux-gnu"
+      if ! rustup target list --installed | grep -q '^x86_64-unknown-linux-gnu$'; then
+        echo "安装 Rust 交叉编译目标 x86_64-unknown-linux-gnu..."
+        rustup target add x86_64-unknown-linux-gnu
+      fi
+      export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
+      export PKG_CONFIG_ALLOW_CROSS=1
+      ;;
+    *)
+      echo "错误：不支持的架构 \"${KYLIN_ARCH}\"，可选：arm64、amd64"
+      exit 1
+      ;;
+  esac
+
+  TARGET_ARGS=(--target "$RUST_TARGET")
 fi
 
 missing_tools=()
@@ -128,20 +226,26 @@ if [[ ! -f /usr/include/webkit2gtk-4.1/webkit2.h && ! -f /usr/include/webkit2gtk
 EOF
 fi
 
-echo "开始打包麒麟环境安装包（bundles: ${BUNDLES}）..."
-npm run tauri -- build --bundles "$BUNDLES" "${EXTRA_ARGS[@]}"
+if [[ -n "$RUST_TARGET" ]]; then
+  BUNDLE_DIR="src-tauri/target/${RUST_TARGET}/release/bundle"
+else
+  BUNDLE_DIR="src-tauri/target/release/bundle"
+fi
+
+echo "开始打包麒麟环境安装包（arch: ${KYLIN_ARCH}, bundles: ${BUNDLES}）..."
+npm run tauri -- build --bundles "$BUNDLES" "${TARGET_ARGS[@]}" "${EXTRA_ARGS[@]}"
 
 cat <<EOF
 
 打包完成，安装包输出目录：
 
-  src-tauri/target/release/bundle/
+  ${BUNDLE_DIR}/
 
 常见产物：
-  - deb: src-tauri/target/release/bundle/deb/
-  - rpm: src-tauri/target/release/bundle/rpm/
+  - deb: ${BUNDLE_DIR}/deb/
+  - rpm: ${BUNDLE_DIR}/rpm/
 
 安装示例（deb）：
-  sudo dpkg -i src-tauri/target/release/bundle/deb/*.deb
+  sudo dpkg -i ${BUNDLE_DIR}/deb/*.deb
   sudo apt install -f -y
 EOF

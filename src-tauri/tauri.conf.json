@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi"],
+    "targets": ["deb", "msi"],
     "shortDescription": "报到取号",
     "longDescription": "面向营业厅现场终端的桌面取号应用，支持预约取号与现场取号，集成身份证读卡与小票打印能力。",
     "publisher": "QMS",

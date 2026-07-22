@@ -7,7 +7,10 @@ APPIMAGE="${1:?用法: $0 <input.AppImage> [output_dir]}"
 OUTPUT_DIR="${2:-$(dirname "$APPIMAGE")}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TAURI_CONF="$ROOT_DIR/src-tauri/tauri.conf.json"
+# shellcheck source=kylin-launcher.sh
+source "$SCRIPT_DIR/kylin-launcher.sh"
 
 if [[ ! -f "$APPIMAGE" ]]; then
   echo "错误：找不到 AppImage: $APPIMAGE" >&2
@@ -41,6 +44,9 @@ case "$(uname -m)" in
     ;;
 esac
 
+LD_LINUX="$(kylin_ld_linux)"
+INSTALL_ROOT="/opt/qms"
+
 APPIMAGE="$(readlink -f "$APPIMAGE")"
 mkdir -p "$OUTPUT_DIR"
 
@@ -64,18 +70,19 @@ if [[ ! -f "$APP_DIR/usr/lib/glibc-compat/libc.so.6" ]]; then
   echo "警告：未检测到 bundled glibc-compat，建议先执行 repack-appimage-glibc-compat.sh" >&2
 fi
 
+MAIN_BIN="$(kylin_detect_main_bin "$APP_DIR")"
 INSTALL_PREFIX="opt/qms"
 STAGING="$PKG_ROOT/$INSTALL_PREFIX"
 mkdir -p "$STAGING"
 cp -a "$APP_DIR/." "$STAGING/"
 
+# /usr/bin 入口：完整启动脚本（固定 /opt/qms，适配 UKUI 双击启动）
 LAUNCHER="$PKG_ROOT/usr/bin/$PACKAGE_NAME"
 mkdir -p "$(dirname "$LAUNCHER")"
-cat > "$LAUNCHER" <<EOF
-#!/bin/sh
-exec "/$INSTALL_PREFIX/AppRun" "\$@"
-EOF
-chmod 755 "$LAUNCHER"
+kylin_write_launcher "$LAUNCHER" "$INSTALL_ROOT" "$MAIN_BIN" "$LD_LINUX" 0
+
+# /opt/qms/AppRun 同步为相同逻辑，便于终端直接调试
+kylin_write_launcher "$STAGING/AppRun" "$INSTALL_ROOT" "$MAIN_BIN" "$LD_LINUX" 0
 
 DESKTOP_ID="com.qms.desktop"
 DESKTOP_FILE="$PKG_ROOT/usr/share/applications/${DESKTOP_ID}.desktop"
@@ -84,12 +91,13 @@ cat > "$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Categories=Utility;
 Comment=${SHORT_DESC}
-Exec=${PACKAGE_NAME} %F
+Exec=/usr/bin/${PACKAGE_NAME}
 Icon=${PACKAGE_NAME}
 Name=${PRODUCT_NAME}
 Terminal=false
 Type=Application
-StartupWMClass=${PACKAGE_NAME}
+StartupNotify=true
+TryExec=/usr/bin/${PACKAGE_NAME}
 EOF
 
 if [[ -d "$APP_DIR/usr/share/icons" ]]; then
@@ -98,8 +106,6 @@ if [[ -d "$APP_DIR/usr/share/icons" ]]; then
 fi
 
 mkdir -p "$PKG_ROOT/DEBIAN"
-# 自包含安装包不声明 WebKit/GTK 依赖，避免麒麟软件源包名不一致导致安装失败。
-# 仅保留 libc6，各 Debian 系发行版均存在。
 cat > "$PKG_ROOT/DEBIAN/control" <<EOF
 Package: ${PACKAGE_NAME}
 Version: ${VERSION}
@@ -113,10 +119,22 @@ Description: ${SHORT_DESC}
  本包装内置 WebKit 与 glibc 运行时，适配 glibc 2.31 的银河麒麟桌面版。
 EOF
 
+cat > "$PKG_ROOT/DEBIAN/postinst" <<EOF
+#!/bin/sh
+set -e
+chmod +x /opt/qms/AppRun /usr/bin/${PACKAGE_NAME} 2>/dev/null || true
+find /opt/qms/usr/bin -type f -perm -111 -exec chmod +x {} + 2>/dev/null || true
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+exit 0
+EOF
+chmod 755 "$PKG_ROOT/DEBIAN/postinst"
+
 DEB_FILE="$OUTPUT_DIR/${PACKAGE_NAME}_${VERSION}_${DEB_ARCH}.deb"
-# 必须使用 gzip：Ubuntu 22.04 默认 zstd，银河麒麟 V10 的 dpkg 无法解压 control.tar.zst / data.tar.zst。
 dpkg-deb -Zgzip --build --root-owner-group "$PKG_ROOT" "$DEB_FILE"
 
 echo "=== 完成：已生成麒麟兼容 deb ==="
 echo "  $DEB_FILE"
 echo "  安装: sudo dpkg -i $(basename "$DEB_FILE") && sudo apt install -f -y"
+echo "  若无法启动，请查看日志: ~/.cache/qms/launch.log"

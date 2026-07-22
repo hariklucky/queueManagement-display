@@ -35,8 +35,14 @@ else
   exit 1
 fi
 
-if [[ -x "$WORKDIR/extract/opt/qms/AppRun" ]] && find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | grep -q .; then
-  echo "启动器结构正常（/opt/qms/AppRun + /usr/bin 入口）。"
+if [[ -x "$WORKDIR/extract/usr/bin/"* ]] 2>/dev/null || find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | grep -q .; then
+  launcher="$(find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | head -n 1)"
+  if grep -q 'GDK_BACKEND=x11' "$launcher" && grep -q 'glibc-compat' "$launcher"; then
+    echo "启动器包含 X11 与 bundled 运行时配置。"
+  else
+    echo "错误：启动器缺少麒麟 X11 / glibc-compat 配置" >&2
+    exit 1
+  fi
 else
   echo "错误：deb 启动器结构不完整" >&2
   exit 1

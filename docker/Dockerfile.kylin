@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends --no-install-tr
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends --no-install-triggers \
-    libwebkit2gtk-4.0-dev \
+    libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libglib2.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \

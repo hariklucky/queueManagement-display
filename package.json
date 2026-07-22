@@ -22,6 +22,7 @@
     "tauri:build:kylin": "bash scripts/build-kylin.sh",
     "tauri:build:kylin:deb": "bash scripts/build-kylin.sh --deb",
     "tauri:build:kylin:deb:arm64": "bash scripts/build-kylin.sh --deb --arm64",
+    "tauri:build:kylin:appimage:arm64": "bash scripts/build-kylin.sh --appimage --arm64",
     "tauri:build:kylin:deb:amd64": "bash scripts/build-kylin.sh --deb --amd64",
     "tauri:build:kylin:rpm": "bash scripts/build-kylin.sh --rpm",
     "tauri:build:kylin:all": "bash scripts/build-kylin.sh --all",

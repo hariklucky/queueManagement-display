@@ -27,6 +27,10 @@ while [[ $# -gt 0 ]]; do
       KYLIN_ARCH="amd64"
       shift
       ;;
+    --deb|--appimage)
+      PASSTHROUGH_ARGS+=("$1")
+      shift
+      ;;
     --rpm|--all)
       cat <<'EOF'
 错误：macOS / Windows 下 Docker 目前仅支持 deb 安装包。
@@ -163,44 +167,34 @@ DOCKER_NPM_CACHE_VOLUME="qms-kylin-npm-cache-${KYLIN_ARCH}"
 DOCKER_CARGO_REGISTRY_VOLUME="qms-kylin-cargo-registry-${KYLIN_ARCH}"
 DOCKER_CARGO_GIT_VOLUME="qms-kylin-cargo-git-${KYLIN_ARCH}"
 
-echo "在 Docker 容器中打包 deb 安装包（arch=${KYLIN_ARCH}, platform=${PLATFORM}）..."
+DOCKER_BUILD_ARGS=(--"${KYLIN_ARCH}")
 if ((${#PASSTHROUGH_ARGS[@]} > 0)); then
-  docker run --rm \
-    --platform "$PLATFORM" \
-    -v "$ROOT_DIR:/app" \
-    -v "${DOCKER_NODE_MODULES_VOLUME}:/app/node_modules" \
-    -v "${DOCKER_NPM_CACHE_VOLUME}:/root/.npm" \
-    -v "${DOCKER_CARGO_REGISTRY_VOLUME}:/usr/local/cargo/registry" \
-    -v "${DOCKER_CARGO_GIT_VOLUME}:/usr/local/cargo/git" \
-    -w /app \
-    -e KYLIN_IN_DOCKER=1 \
-    -e KYLIN_BUNDLES=deb \
-    -e KYLIN_ARCH="$KYLIN_ARCH" \
-    "$IMAGE_NAME" \
-    bash -c 'npm install && exec bash scripts/build-kylin.sh --deb --'"${KYLIN_ARCH}"' "$@"' _ "${PASSTHROUGH_ARGS[@]}"
+  DOCKER_BUILD_ARGS+=("${PASSTHROUGH_ARGS[@]}")
 else
-  docker run --rm \
-    --platform "$PLATFORM" \
-    -v "$ROOT_DIR:/app" \
-    -v "${DOCKER_NODE_MODULES_VOLUME}:/app/node_modules" \
-    -v "${DOCKER_NPM_CACHE_VOLUME}:/root/.npm" \
-    -v "${DOCKER_CARGO_REGISTRY_VOLUME}:/usr/local/cargo/registry" \
-    -v "${DOCKER_CARGO_GIT_VOLUME}:/usr/local/cargo/git" \
-    -w /app \
-    -e KYLIN_IN_DOCKER=1 \
-    -e KYLIN_BUNDLES=deb \
-    -e KYLIN_ARCH="$KYLIN_ARCH" \
-    "$IMAGE_NAME" \
-    bash -c 'npm install && exec bash scripts/build-kylin.sh --deb --'"${KYLIN_ARCH}"
+  DOCKER_BUILD_ARGS+=(--deb)
 fi
+
+echo "在 Docker 容器中打包（arch=${KYLIN_ARCH}, platform=${PLATFORM}, args=${DOCKER_BUILD_ARGS[*]}）..."
+docker run --rm \
+  --platform "$PLATFORM" \
+  -v "$ROOT_DIR:/app" \
+  -v "${DOCKER_NODE_MODULES_VOLUME}:/app/node_modules" \
+  -v "${DOCKER_NPM_CACHE_VOLUME}:/root/.npm" \
+  -v "${DOCKER_CARGO_REGISTRY_VOLUME}:/usr/local/cargo/registry" \
+  -v "${DOCKER_CARGO_GIT_VOLUME}:/usr/local/cargo/git" \
+  -w /app \
+  -e KYLIN_IN_DOCKER=1 \
+  -e KYLIN_ARCH="$KYLIN_ARCH" \
+  "$IMAGE_NAME" \
+  bash -c 'npm install && exec bash scripts/build-kylin.sh "$@"' _ "${DOCKER_BUILD_ARGS[@]}"
 
 cat <<EOF
 
 Docker 打包完成（${KYLIN_ARCH}），安装包输出目录：
 
-  src-tauri/target/release/bundle/deb/
+  src-tauri/target/release/bundle/
 
-安装示例（在 ${KYLIN_ARCH} 麒麟终端上）：
-  sudo dpkg -i src-tauri/target/release/bundle/deb/*.deb
-  sudo apt install -f -y
+AppImage 运行示例（麒麟终端）：
+  chmod +x src-tauri/target/release/bundle/appimage/*.AppImage
+  ./src-tauri/target/release/bundle/appimage/*.AppImage
 EOF

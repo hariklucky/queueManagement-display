@@ -20,6 +20,10 @@ while [[ $# -gt 0 ]]; do
       BUNDLES="deb"
       shift
       ;;
+    --appimage)
+      BUNDLES="appimage"
+      shift
+      ;;
     --rpm)
       BUNDLES="rpm"
       shift
@@ -67,6 +71,7 @@ if [[ "$(uname -s)" != "Linux" && -z "${KYLIN_IN_DOCKER:-}" ]]; then
   DOCKER_ARGS=()
   case "$BUNDLES" in
     deb) DOCKER_ARGS+=(--deb) ;;
+    appimage) DOCKER_ARGS+=(--appimage) ;;
     rpm) DOCKER_ARGS+=(--rpm) ;;
     deb,rpm) DOCKER_ARGS+=(--all) ;;
   esac
@@ -187,13 +192,27 @@ EOF
         exit 1
       fi
       ;;
+    appimage)
+      if ! command -v patchelf >/dev/null 2>&1; then
+        cat <<'EOF'
+错误：未找到 patchelf，无法生成 AppImage。
+
+银河麒麟 / Ubuntu 系可执行：
+
+  sudo apt update
+  sudo apt install -y patchelf libfuse2
+EOF
+        exit 1
+      fi
+      ;;
     *)
       cat <<EOF
 错误：不支持的安装包类型 "${bundle}"。
 
-可选值：deb、rpm
+可选值：deb、appimage、rpm
 示例：
   npm run tauri:build:kylin
+  npm run tauri:build:kylin:appimage:arm64
   npm run tauri:build:kylin:rpm
   npm run tauri:build:kylin:all
 EOF
@@ -243,9 +262,14 @@ cat <<EOF
 
 常见产物：
   - deb: ${BUNDLE_DIR}/deb/
+  - appimage: ${BUNDLE_DIR}/appimage/
   - rpm: ${BUNDLE_DIR}/rpm/
 
 安装示例（deb）：
   sudo dpkg -i ${BUNDLE_DIR}/deb/*.deb
   sudo apt install -f -y
+
+运行示例（AppImage，适合仅有 WebKit 4.0 的麒麟终端）：
+  chmod +x ${BUNDLE_DIR}/appimage/*.AppImage
+  ${BUNDLE_DIR}/appimage/*.AppImage
 EOF

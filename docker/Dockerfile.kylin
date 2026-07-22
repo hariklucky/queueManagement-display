@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # --no-install-triggers：规避 Intel Mac QEMU 模拟 arm64 时 libc-bin 触发器段错误
 RUN apt-get update && apt-get install -y --no-install-recommends --no-install-triggers \
     ca-certificates curl git build-essential pkg-config \
-    libssl-dev dpkg-dev \
+    libssl-dev dpkg-dev patchelf libfuse2 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends --no-install-triggers \

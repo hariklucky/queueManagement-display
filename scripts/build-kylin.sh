@@ -251,15 +251,33 @@ else
   BUNDLE_DIR="src-tauri/target/release/bundle"
 fi
 
-echo "开始打包麒麟环境安装包（arch: ${KYLIN_ARCH}, bundles: ${BUNDLES}）..."
-npm run tauri -- build --bundles "$BUNDLES" "${TARGET_ARGS[@]}" "${EXTRA_ARGS[@]}"
+TAURI_BUNDLES="$BUNDLES"
+KYLIN_DEB_FROM_APPIMAGE="${KYLIN_DEB_FROM_APPIMAGE:-1}"
+if [[ "$BUNDLES" == "deb" && "$KYLIN_DEB_FROM_APPIMAGE" == "1" ]]; then
+  echo "麒麟 deb 模式：先构建 AppImage（内置 WebKit + glibc 兼容），再封装 deb..."
+  TAURI_BUNDLES="appimage"
+fi
 
-if [[ "$BUNDLES" == "appimage" && "${KYLIN_APPIMAGE_GLIBC_COMPAT:-1}" == "1" ]]; then
-  appimage_file="$(find "$ROOT_DIR/$BUNDLE_DIR" -name "*.AppImage" -type f | head -n 1 || true)"
-  if [[ -n "$appimage_file" && -f "$appimage_file" && -f "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" ]]; then
+echo "开始打包麒麟环境安装包（arch: ${KYLIN_ARCH}, bundles: ${BUNDLES}）..."
+npm run tauri -- build --bundles "$TAURI_BUNDLES" "${TARGET_ARGS[@]}" "${EXTRA_ARGS[@]}"
+
+appimage_file="$(find "$ROOT_DIR/$BUNDLE_DIR" -name "*.AppImage" -type f | head -n 1 || true)"
+
+if [[ -n "$appimage_file" && -f "$appimage_file" && "${KYLIN_APPIMAGE_GLIBC_COMPAT:-1}" == "1" ]]; then
+  if [[ -f "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" ]]; then
     echo "正在为 glibc 2.31 兼容重新打包 AppImage..."
     bash "$ROOT_DIR/scripts/repack-appimage-glibc-compat.sh" "$appimage_file" "$appimage_file"
   fi
+fi
+
+if [[ "$BUNDLES" == "deb" && "$KYLIN_DEB_FROM_APPIMAGE" == "1" ]]; then
+  if [[ -z "$appimage_file" || ! -f "$appimage_file" ]]; then
+    echo "错误：未找到 AppImage，无法生成麒麟 deb" >&2
+    exit 1
+  fi
+  deb_dir="$ROOT_DIR/$BUNDLE_DIR/deb"
+  mkdir -p "$deb_dir"
+  bash "$ROOT_DIR/scripts/repack-deb-from-appimage.sh" "$appimage_file" "$deb_dir"
 fi
 
 cat <<EOF

@@ -1,4 +1,4 @@
-name: Build Kylin ARM64 Linux
+name: Build Kylin ARM64 DEB
 
 on:
   workflow_dispatch:
@@ -36,37 +36,35 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      # AppImage 自带 WebKit 等库，适合仅有 WebKit 4.0 的麒麟终端。
-      # 构建后 repack 会 bundled glibc，兼容 glibc 2.31（银河麒麟 V10）。
-      - name: Build arm64 AppImage
+      # 先打 AppImage（自带 WebKit），再 repack glibc 并封装 deb，适配 glibc 2.31 + WebKit 4.0 麒麟终端。
+      - name: Build arm64 Kylin deb
         env:
-          # build-kylin.sh 内已做 glibc 兼容 repack，避免 workflow 重复执行
+          KYLIN_DEB_FROM_APPIMAGE: "1"
           KYLIN_APPIMAGE_GLIBC_COMPAT: "1"
-        run: npm run tauri:build:kylin:appimage:arm64
+        run: npm run tauri:build:kylin:deb:arm64
 
-      - name: Verify AppImage glibc compatibility
+      - name: Verify deb Kylin compatibility
         run: |
-          appimage_file="$(find src-tauri/target -name "*.AppImage" -type f | head -n 1)"
-          if [ -z "$appimage_file" ]; then
-            echo "错误：未找到 AppImage"
+          deb_file="$(find src-tauri/target/release/bundle/deb -name "*.deb" -type f | head -n 1)"
+          if [ -z "$deb_file" ]; then
+            echo "错误：未找到 deb 安装包"
             ls -laR src-tauri/target/release/bundle/ || true
             exit 1
           fi
-          chmod +x scripts/verify-appimage-glibc.sh
-          bash scripts/verify-appimage-glibc.sh "$appimage_file"
+          chmod +x scripts/verify-deb-kylin-compat.sh
+          bash scripts/verify-deb-kylin-compat.sh "$deb_file"
 
-      - name: Prepare AppImage artifact
+      - name: Prepare deb artifact
         run: |
-          appimage_file="$(find src-tauri/target -name "*.AppImage" -type f | head -n 1)"
+          deb_file="$(find src-tauri/target/release/bundle/deb -name "*.deb" -type f | head -n 1)"
           mkdir -p artifact
-          cp "$appimage_file" artifact/
-          chmod +x artifact/*
+          cp "$deb_file" artifact/
           ls -la artifact/
 
-      - name: Upload AppImage artifact
+      - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kylin-arm64-appimage
+          name: kylin-arm64-deb
           path: artifact/
           retention-days: 30
           if-no-files-found: error

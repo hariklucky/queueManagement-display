@@ -57,6 +57,12 @@ if [[ ! -f "$COMPAT_DIR/$LD_LINUX" || ! -f "$COMPAT_DIR/libc.so.6" ]]; then
 fi
 
 MAIN_BIN="$(kylin_detect_main_bin "$ROOT")"
+echo "=== 修补 ELF RPATH / interpreter ==="
+kylin_patch_elfs "$ROOT" "$COMPAT_DIR" "$LD_LINUX" "\$ORIGIN/../lib/glibc-compat/$LD_LINUX"
+
+echo "=== 验证 bundled loader 依赖完整性 ==="
+kylin_verify_bundle "$ROOT" "$MAIN_BIN" "$LD_LINUX"
+
 echo "=== 重写 AppRun（主程序: usr/bin/$MAIN_BIN）==="
 cp "$ROOT/AppRun" "$ROOT/AppRun.orig"
 kylin_write_launcher "$ROOT/AppRun" "" "$MAIN_BIN" "$LD_LINUX" 1

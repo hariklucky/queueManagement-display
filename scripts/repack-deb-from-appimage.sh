@@ -71,6 +71,13 @@ if [[ ! -f "$APP_DIR/usr/lib/glibc-compat/libc.so.6" ]]; then
 fi
 
 MAIN_BIN="$(kylin_detect_main_bin "$APP_DIR")"
+echo "=== 再次补全依赖并验证 ==="
+COMPAT_DIR="$APP_DIR/usr/lib/glibc-compat"
+GLIB_DIR="$(kylin_glib_dir)"
+kylin_copy_runtime_libs "$COMPAT_DIR" "$GLIB_DIR" "$LD_LINUX" "$APP_DIR"
+kylin_patch_elfs "$APP_DIR" "$COMPAT_DIR" "$LD_LINUX" "/opt/qms/usr/lib/glibc-compat/$LD_LINUX"
+kylin_verify_bundle "$APP_DIR" "$MAIN_BIN" "$LD_LINUX"
+
 INSTALL_PREFIX="opt/qms"
 STAGING="$PKG_ROOT/$INSTALL_PREFIX"
 mkdir -p "$STAGING"
@@ -80,6 +87,9 @@ cp -a "$APP_DIR/." "$STAGING/"
 LAUNCHER="$PKG_ROOT/usr/bin/$PACKAGE_NAME"
 mkdir -p "$(dirname "$LAUNCHER")"
 kylin_write_launcher "$LAUNCHER" "$INSTALL_ROOT" "$MAIN_BIN" "$LD_LINUX" 0
+
+DEBUG_LAUNCHER="$PKG_ROOT/usr/bin/${PACKAGE_NAME}-debug"
+kylin_write_debug_launcher "$DEBUG_LAUNCHER" "$INSTALL_ROOT" "$MAIN_BIN" "$LD_LINUX"
 
 # /opt/qms/AppRun 同步为相同逻辑，便于终端直接调试
 kylin_write_launcher "$STAGING/AppRun" "$INSTALL_ROOT" "$MAIN_BIN" "$LD_LINUX" 0
@@ -122,7 +132,7 @@ EOF
 cat > "$PKG_ROOT/DEBIAN/postinst" <<EOF
 #!/bin/sh
 set -e
-chmod +x /opt/qms/AppRun /usr/bin/${PACKAGE_NAME} 2>/dev/null || true
+chmod +x /opt/qms/AppRun /usr/bin/${PACKAGE_NAME} /usr/bin/${PACKAGE_NAME}-debug 2>/dev/null || true
 find /opt/qms/usr/bin -type f -perm -111 -exec chmod +x {} + 2>/dev/null || true
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database /usr/share/applications 2>/dev/null || true

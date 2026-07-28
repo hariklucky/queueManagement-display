@@ -47,6 +47,9 @@ if [[ ! -f "$ROOT/AppRun" ]]; then
   exit 1
 fi
 
+chmod +x "$ROOT/AppRun" 2>/dev/null || true
+find "$ROOT/usr/bin" -maxdepth 1 -type f -exec chmod +x {} + 2>/dev/null || true
+
 COMPAT_DIR="$ROOT/usr/lib/glibc-compat"
 echo "=== 收集 glibc / libstdc++ 运行时依赖 ==="
 kylin_copy_runtime_libs "$COMPAT_DIR" "$GLIB_DIR" "$LD_LINUX" "$ROOT"
@@ -57,6 +60,8 @@ if [[ ! -f "$COMPAT_DIR/$LD_LINUX" || ! -f "$COMPAT_DIR/libc.so.6" ]]; then
 fi
 
 MAIN_BIN="$(kylin_detect_main_bin "$ROOT")"
+kylin_ensure_bin_executable "$ROOT" "$MAIN_BIN"
+echo "主程序: usr/bin/$MAIN_BIN"
 echo "=== 修补 ELF RPATH / interpreter ==="
 kylin_patch_elfs "$ROOT" "$COMPAT_DIR" "$LD_LINUX" "\$ORIGIN/../lib/glibc-compat/$LD_LINUX"
 

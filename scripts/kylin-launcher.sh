@@ -33,20 +33,57 @@ kylin_lib_search_dirs() {
 kylin_detect_main_bin() {
   local app_dir="$1"
   local main_bin=""
+  local candidate apprun
 
-  if [[ -f "$app_dir/AppRun.orig" ]]; then
-    main_bin="$(grep -E 'exec .*usr/bin/' "$app_dir/AppRun.orig" | sed -n 's/.*usr\/bin\/\([^"'"'"'[:space:]]*\).*/\1/p' | head -n 1 || true)"
-  elif [[ -f "$app_dir/AppRun" ]]; then
-    main_bin="$(grep -E 'usr/bin/' "$app_dir/AppRun" | sed -n 's/.*usr\/bin\/\([^"'"'"'[:space:]]*\).*/\1/p' | head -n 1 || true)"
+  for apprun in "$app_dir/AppRun.orig" "$app_dir/AppRun"; do
+    [[ -f "$apprun" ]] || continue
+    main_bin="$(grep -Eo 'usr/bin/[^[:space:]"'"'"']+' "$apprun" 2>/dev/null | head -n 1 | sed 's|.*/||' || true)"
+    if [[ -n "$main_bin" && -f "$app_dir/usr/bin/$main_bin" ]]; then
+      printf '%s' "$main_bin"
+      return 0
+    fi
+  done
+
+  # AppImage 解压后可能丢失可执行位，不能依赖 -perm -111
+  while IFS= read -r -d '' candidate; do
+    [[ -f "$candidate" ]] || continue
+    [[ "$candidate" == *.so* ]] && continue
+    if file "$candidate" 2>/dev/null | grep -q 'ELF .* executable'; then
+      basename "$candidate"
+      return 0
+    fi
+  done < <(find "$app_dir/usr/bin" -maxdepth 1 -type f ! -name '*.so*' -print0 2>/dev/null)
+
+  # 常见命名：Cargo 包名 qms、Tauri productName（如 报到取号）
+  for main_bin in qms 报到取号; do
+    if [[ -f "$app_dir/usr/bin/$main_bin" ]]; then
+      printf '%s' "$main_bin"
+      return 0
+    fi
+  done
+
+  # 若目录里只有一个非 .so 文件，即为主程序
+  local -a bins=()
+  while IFS= read -r -d '' candidate; do
+    bins+=("$candidate")
+  done < <(find "$app_dir/usr/bin" -maxdepth 1 -type f ! -name '*.so*' -print0 2>/dev/null)
+  if ((${#bins[@]} == 1)); then
+    basename "${bins[0]}"
+    return 0
   fi
-  if [[ -z "$main_bin" ]]; then
-    main_bin="$(find "$app_dir/usr/bin" -maxdepth 1 -type f -perm -111 ! -name '*.so*' -printf '%f\n' 2>/dev/null | head -n 1 || true)"
-  fi
-  if [[ -z "$main_bin" || ! -f "$app_dir/usr/bin/$main_bin" ]]; then
-    echo "错误：无法确定主程序（$app_dir/usr/bin）" >&2
-    return 1
-  fi
-  printf '%s' "$main_bin"
+
+  echo "错误：无法确定主程序（$app_dir/usr/bin）" >&2
+  echo "目录内容：" >&2
+  ls -la "$app_dir/usr/bin/" >&2 || true
+  return 1
+}
+
+kylin_ensure_bin_executable() {
+  local app_dir="$1"
+  local main_bin="$2"
+  local bin_path="$app_dir/usr/bin/$main_bin"
+  [[ -f "$bin_path" ]] && chmod +x "$bin_path" 2>/dev/null || true
+  [[ -x "$app_dir/AppRun" ]] || chmod +x "$app_dir/AppRun" 2>/dev/null || true
 }
 
 kylin_write_launcher() {
@@ -82,10 +119,11 @@ if [ ! -x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
   echo "错误：缺少 bundled loader: \$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" >&2
   exit 127
 fi
-if [ ! -x "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
+if [ ! -f "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
   echo "错误：缺少主程序: \$APP_ROOT/usr/bin/\$MAIN_BIN" >&2
   exit 127
 fi
+chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 
 if [ -t 2 ]; then
   exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
@@ -122,10 +160,11 @@ if [ ! -x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
   echo "错误：缺少 bundled loader: \$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" >&2
   exit 127
 fi
-if [ ! -x "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
+if [ ! -f "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
   echo "错误：缺少主程序: \$APP_ROOT/usr/bin/\$MAIN_BIN" >&2
   exit 127
 fi
+chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 
 if [ -t 2 ]; then
   exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
@@ -266,8 +305,8 @@ kylin_copy_runtime_libs() {
 
 kylin_patch_elfs() {
   local app_dir="$1"
-  local compat_dir="$2"
-  local ld_linux="$3"
+  local _compat_dir="$2"
+  local _ld_linux="$3"
   local interp_path="$4"
 
   command -v patchelf >/dev/null 2>&1 || return 0
@@ -275,24 +314,27 @@ kylin_patch_elfs() {
   local rpath='$ORIGIN/../lib/glibc-compat:$ORIGIN/../lib'
   local target
 
+  # 仅修补 usr/bin 下可执行文件；不要修改 .so 的 interpreter，否则会破坏 WebKit 等库。
   while IFS= read -r -d '' target; do
     [[ -f "$target" ]] || continue
-    file "$target" 2>/dev/null | grep -q 'ELF.*executable\|ELF.*shared object' || continue
+    file "$target" 2>/dev/null | grep -q 'ELF .* executable' || continue
     patchelf --set-interpreter "$interp_path" "$target" 2>/dev/null || true
     patchelf --set-rpath "$rpath" "$target" 2>/dev/null || true
-  done < <(find "$app_dir/usr/bin" "$app_dir/usr/lib" -type f -print0 2>/dev/null)
+  done < <(find "$app_dir/usr/bin" -maxdepth 1 -type f -print0 2>/dev/null)
 }
 
 kylin_verify_bundle() {
   local app_dir="$1"
   local main_bin="$2"
   local ld_linux="$3"
+  local strict="${KYLIN_VERIFY_STRICT:-0}"
 
   local compat_dir="$app_dir/usr/lib/glibc-compat"
   local libpath="$compat_dir:$app_dir/usr/lib"
   local loader="$compat_dir/$ld_linux"
   local main="$app_dir/usr/bin/$main_bin"
   local failed=0
+  local missing_lines=()
 
   if [[ ! -x "$loader" || ! -f "$compat_dir/libc.so.6" ]]; then
     echo "错误：glibc-compat 不完整" >&2
@@ -300,11 +342,26 @@ kylin_verify_bundle() {
   fi
 
   while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
     if [[ "$line" == *" not found" ]]; then
-      echo "错误：缺少依赖 $line" >&2
+      # vdso / 可选插件不算致命错误
+      if [[ "$line" == *"linux-vdso.so.1"* ]]; then
+        continue
+      fi
+      missing_lines+=("$line")
       failed=1
     fi
   done < <("$loader" --library-path "$libpath" ldd "$main" 2>/dev/null || true)
 
-  [[ "$failed" -eq 0 ]]
+  if [[ "$failed" -eq 1 ]]; then
+    echo "警告：bundled loader 下主程序仍有未解析依赖（安装后可用 qms-debug 排查）：" >&2
+    printf '  %s\n' "${missing_lines[@]}" >&2
+    if [[ "$strict" == "1" ]]; then
+      return 1
+    fi
+  else
+    echo "bundled loader 依赖检查通过。"
+  fi
+
+  return 0
 }

@@ -66,11 +66,16 @@ if [[ ! -f "$APP_DIR/AppRun" ]]; then
   exit 1
 fi
 
+chmod +x "$APP_DIR/AppRun" 2>/dev/null || true
+find "$APP_DIR/usr/bin" -maxdepth 1 -type f -exec chmod +x {} + 2>/dev/null || true
+
 if [[ ! -f "$APP_DIR/usr/lib/glibc-compat/libc.so.6" ]]; then
   echo "警告：未检测到 bundled glibc-compat，建议先执行 repack-appimage-glibc-compat.sh" >&2
 fi
 
 MAIN_BIN="$(kylin_detect_main_bin "$APP_DIR")"
+kylin_ensure_bin_executable "$APP_DIR" "$MAIN_BIN"
+echo "主程序: usr/bin/$MAIN_BIN"
 echo "=== 再次补全依赖并验证 ==="
 COMPAT_DIR="$APP_DIR/usr/lib/glibc-compat"
 GLIB_DIR="$(kylin_glib_dir)"

@@ -324,7 +324,90 @@ kylin_find_lib_in_app() {
 
 kylin_freetype_has_webkit_symbol() {
   local freetype="$1"
-  [[ -f "$freetype" ]] && nm -D "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'
+  [[ -f "$freetype" ]] || return 1
+  if nm -D "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+    return 0
+  fi
+  if readelf -Ws "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+    return 0
+  fi
+  if objdump -T "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+    return 0
+  fi
+  return 1
+}
+
+kylin_freetype_from_webkit_ldd() {
+  local app_dir="$1"
+  local webkit="$app_dir/usr/lib/libwebkit2gtk-4.1.so.0"
+  local libpath line lib_path
+
+  [[ -f "$webkit" ]] || return 1
+
+  libpath="$app_dir/usr/lib"
+  line="$(LD_LIBRARY_PATH="$libpath" ldd "$webkit" 2>/dev/null | grep 'libfreetype\.so' | head -n 1 || true)"
+  [[ -n "$line" && "$line" != *" not found"* ]] || return 1
+
+  lib_path="${line#* => }"
+  lib_path="${lib_path%%[[:space:]]*}"
+  [[ -f "$lib_path" ]] || return 1
+  printf '%s' "$lib_path"
+}
+
+kylin_bundle_single_lib_deps() {
+  local lib_file="$1"
+  local app_dir="$2"
+  local line lib_name lib_path
+
+  [[ -f "$lib_file" ]] || return 0
+
+  while IFS= read -r line; do
+    if [[ "$line" == *" not found" ]]; then
+      lib_name="${line%% =>*}"
+      lib_name="${lib_name##*[[:space:]]}"
+      lib_path="$(kylin_find_lib_on_system "$lib_name" || true)"
+      [[ -n "$lib_path" ]] && kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    elif [[ "$line" == *" => "* ]]; then
+      lib_path="${line#* => }"
+      lib_path="${lib_path%%[[:space:]]*}"
+      [[ "$lib_path" == "$app_dir/"* ]] && continue
+      lib_name="$(basename "$lib_path")"
+      [[ -f "$lib_path" && ! -f "$app_dir/usr/lib/$lib_name" ]] && \
+        kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    fi
+  done < <(ldd "$lib_file" 2>/dev/null || true)
+}
+
+kylin_fetch_noble_freetype() {
+  local dest_dir="$1"
+  local deb_url workdir lib_path
+
+  case "$(uname -m)" in
+    aarch64|arm64)
+      deb_url="http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_arm64.deb"
+      ;;
+    x86_64|amd64)
+      deb_url="http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_amd64.deb"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  workdir="$(mktemp -d)"
+  if ! curl -fsSL -o "$workdir/libfreetype6.deb" "$deb_url"; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  dpkg-deb -x "$workdir/libfreetype6.deb" "$workdir/extract"
+  lib_path="$(find "$workdir/extract" -name 'libfreetype.so.6' | head -n 1 || true)"
+  if [[ -z "$lib_path" || ! -f "$lib_path" ]]; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  kylin_copy_lib_force "$lib_path" "$dest_dir"
+  rm -rf "$workdir"
+  return 0
 }
 
 # WebKit 4.1 依赖 FreeType >= 2.10.4（FT_Get_Color_Glyph_Paint），麒麟系统自带版本过旧，必须内置构建机库。
@@ -391,20 +474,35 @@ kylin_ensure_freetype_for_webkit() {
     return 0
   fi
 
+  lib_path="$(kylin_freetype_from_webkit_ldd "$app_dir" || true)"
+  if [[ -n "$lib_path" ]]; then
+    echo "  内置 libfreetype.so.6（WebKit ldd）<- $lib_path"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      return 0
+    fi
+  fi
+
   lib_path="$(kylin_find_lib_on_system libfreetype.so.6 || true)"
-  if [[ -z "$lib_path" ]]; then
-    echo "错误：构建机未找到 libfreetype.so.6，请安装 libfreetype6" >&2
-    return 1
+  if [[ -n "$lib_path" ]]; then
+    echo "  内置 libfreetype.so.6（系统）<- $lib_path"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      return 0
+    fi
   fi
 
-  echo "  覆盖内置 libfreetype.so.6 <- $lib_path"
-  kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
-
-  if ! kylin_freetype_has_webkit_symbol "$dest"; then
-    echo "错误：libfreetype.so.6 仍缺少 FT_Get_Color_Glyph_Paint" >&2
-    return 1
+  echo "  系统 FreeType 版本过旧，下载 Ubuntu 24.04 libfreetype6..."
+  if kylin_fetch_noble_freetype "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 24.04 libfreetype.so.6"
+      return 0
+    fi
   fi
-  return 0
+
+  echo "错误：无法获取含 FT_Get_Color_Glyph_Paint 的 libfreetype.so.6" >&2
+  return 1
 }
 
 kylin_copy_font_and_webkit_libs() {

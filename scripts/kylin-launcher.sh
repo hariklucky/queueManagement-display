@@ -119,6 +119,8 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export GSETTINGS_BACKEND=memory
 export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
@@ -184,6 +186,8 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export GSETTINGS_BACKEND=memory
 export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
@@ -255,6 +259,8 @@ export GTK_USE_PORTAL=0
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 
 echo "=== QMS 启动诊断 ==="
@@ -262,22 +268,33 @@ echo "APP_ROOT=\$APP_ROOT"
 echo "MAIN_BIN=\$MAIN_BIN"
 echo "LIBPATH=\$LIBPATH"
 echo
-echo "=== 主程序依赖 ==="
-LD_LIBRARY_PATH="\$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
+echo "=== 内置 WebKit 运行时库 ==="
+for lib in libfreetype.so.6 libgbm.so.1 libdrm.so.2 libwebkit2gtk-4.1.so.0; do
+  if [ -f "\$APP_ROOT/usr/lib/\$lib" ]; then
+    echo "  已内置: \$lib"
+  else
+    echo "  缺少: \$lib"
+  fi
+done
 echo
-echo "=== WebKit / FreeType ==="
-if [ -f "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" ]; then
-  LD_LIBRARY_PATH="\$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" 2>/dev/null | grep -E 'freetype|fontconfig|harfbuzz|not found' || true
-else
-  echo "未找到 libwebkit2gtk-4.1.so.0"
-fi
-ls -la "\$APP_ROOT/usr/lib/libfreetype.so.6" 2>/dev/null || echo "警告：未 bundled libfreetype.so.6"
+echo "=== FreeType / GBM 符号 ==="
 if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
-  if nm -D "\$APP_ROOT/usr/lib/libfreetype.so.6" 2>/dev/null | grep -q FT_Get_Color_Glyph_Paint; then
+  if objdump -T "\$APP_ROOT/usr/lib/libfreetype.so.6" 2>/dev/null | grep -Fq FT_Get_Color_Glyph_Paint; then
     echo "libfreetype 包含 FT_Get_Color_Glyph_Paint"
   else
-    echo "警告：libfreetype 缺少 FT_Get_Color_Glyph_Paint（WebKit 将无法启动）"
+    echo "警告：libfreetype 缺少 FT_Get_Color_Glyph_Paint"
   fi
+else
+  echo "警告：未 bundled libfreetype.so.6"
+fi
+if [ -f "\$APP_ROOT/usr/lib/libgbm.so.1" ]; then
+  if objdump -T "\$APP_ROOT/usr/lib/libgbm.so.1" 2>/dev/null | grep -Fq gbm_bo_create_with_modifiers2; then
+    echo "libgbm 包含 gbm_bo_create_with_modifiers2"
+  else
+    echo "警告：libgbm 缺少 gbm_bo_create_with_modifiers2"
+  fi
+else
+  echo "警告：未 bundled libgbm.so.1（WebKit 将回退麒麟系统旧版 GBM）"
 fi
 echo
 echo "=== 尝试启动 ==="
@@ -322,34 +339,29 @@ kylin_find_lib_in_app() {
   return 1
 }
 
-kylin_freetype_has_webkit_symbol() {
-  local freetype="$1"
-  [[ -f "$freetype" ]] || return 1
-  # 仅检查动态符号表（WebKit 运行时通过动态链接解析）
-  if objdump -T "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
+kylin_lib_has_dynamic_symbol() {
+  local lib="$1"
+  local symbol="$2"
+  [[ -f "$lib" ]] || return 1
+  if objdump -T "$lib" 2>/dev/null | grep -Fq "$symbol"; then
     return 0
   fi
-  if nm -D --defined-only "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
+  if nm -D --defined-only "$lib" 2>/dev/null | grep -Fq "$symbol"; then
     return 0
   fi
   return 1
 }
 
+kylin_freetype_has_webkit_symbol() {
+  kylin_lib_has_dynamic_symbol "$1" 'FT_Get_Color_Glyph_Paint'
+}
+
+kylin_gbm_has_webkit_symbol() {
+  kylin_lib_has_dynamic_symbol "$1" 'gbm_bo_create_with_modifiers2'
+}
+
 kylin_freetype_from_webkit_ldd() {
-  local app_dir="$1"
-  local webkit="$app_dir/usr/lib/libwebkit2gtk-4.1.so.0"
-  local libpath line lib_path
-
-  [[ -f "$webkit" ]] || return 1
-
-  libpath="$app_dir/usr/lib"
-  line="$(LD_LIBRARY_PATH="$libpath" ldd "$webkit" 2>/dev/null | grep 'libfreetype\.so' | head -n 1 || true)"
-  [[ -n "$line" && "$line" != *" not found"* ]] || return 1
-
-  lib_path="${line#* => }"
-  lib_path="${lib_path%%[[:space:]]*}"
-  [[ -f "$lib_path" ]] || return 1
-  printf '%s' "$lib_path"
+  kylin_webkit_ldd_lib_path "$1" 'libfreetype\.so'
 }
 
 kylin_bundle_single_lib_deps() {
@@ -378,7 +390,7 @@ kylin_bundle_single_lib_deps() {
 
 kylin_fetch_noble_freetype() {
   local dest_dir="$1"
-  local deb_url workdir lib_path
+  local deb_url
 
   case "$(uname -m)" in
     aarch64|arm64)
@@ -392,20 +404,74 @@ kylin_fetch_noble_freetype() {
       ;;
   esac
 
+  kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'
+}
+
+kylin_extract_deb_libs() {
+  local deb_url="$1"
+  local dest_dir="$2"
+  local lib_name="${3:-}"
+  local workdir lib_path
+
   workdir="$(mktemp -d)"
-  if ! curl -fsSL -o "$workdir/libfreetype6.deb" "$deb_url"; then
+  if ! curl -fsSL -o "$workdir/pkg.deb" "$deb_url"; then
     rm -rf "$workdir"
     return 1
   fi
-  dpkg-deb -x "$workdir/libfreetype6.deb" "$workdir/extract"
-  lib_path="$(find "$workdir/extract" -name 'libfreetype.so.6' | head -n 1 || true)"
-  if [[ -z "$lib_path" || ! -f "$lib_path" ]]; then
-    rm -rf "$workdir"
-    return 1
+  dpkg-deb -x "$workdir/pkg.deb" "$workdir/extract"
+  if [[ -n "$lib_name" ]]; then
+    lib_path="$(find "$workdir/extract" -name "$lib_name" | head -n 1 || true)"
+    if [[ -z "$lib_path" || ! -f "$lib_path" ]]; then
+      rm -rf "$workdir"
+      return 1
+    fi
+    kylin_copy_lib_force "$lib_path" "$dest_dir"
+  else
+    while IFS= read -r -d '' lib_path; do
+      kylin_copy_lib_force "$lib_path" "$dest_dir"
+    done < <(find "$workdir/extract" \( -name '*.so' -o -name '*.so.*' \) -type f -print0 2>/dev/null)
   fi
-  kylin_copy_lib_force "$lib_path" "$dest_dir"
   rm -rf "$workdir"
   return 0
+}
+
+kylin_fetch_noble_gbm_stack() {
+  local dest_dir="$1"
+  local drm_url gbm_url
+
+  case "$(uname -m)" in
+    aarch64|arm64)
+      drm_url="http://ports.ubuntu.com/pool/main/libd/libdrm/libdrm2_2.4.122-1~ubuntu0.24.04.1_arm64.deb"
+      gbm_url="http://ports.ubuntu.com/pool/main/m/mesa/libgbm1_24.2.8-1ubuntu1~24.04.1_arm64.deb"
+      ;;
+    x86_64|amd64)
+      drm_url="http://archive.ubuntu.com/ubuntu/pool/main/libd/libdrm/libdrm2_2.4.122-1~ubuntu0.24.04.1_amd64.deb"
+      gbm_url="http://archive.ubuntu.com/ubuntu/pool/main/m/mesa/libgbm1_24.2.8-1ubuntu1~24.04.1_amd64.deb"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  kylin_extract_deb_libs "$drm_url" "$dest_dir" || return 1
+  kylin_extract_deb_libs "$gbm_url" "$dest_dir" || return 1
+  return 0
+}
+
+kylin_webkit_ldd_lib_path() {
+  local app_dir="$1"
+  local lib_pattern="$2"
+  local webkit="$app_dir/usr/lib/libwebkit2gtk-4.1.so.0"
+  local libpath line lib_path
+
+  [[ -f "$webkit" ]] || return 1
+  libpath="$app_dir/usr/lib"
+  line="$(LD_LIBRARY_PATH="$libpath" ldd "$webkit" 2>/dev/null | grep "$lib_pattern" | head -n 1 || true)"
+  [[ -n "$line" && "$line" != *" not found"* ]] || return 1
+  lib_path="${line#* => }"
+  lib_path="${lib_path%%[[:space:]]*}"
+  [[ -f "$lib_path" ]] || return 1
+  printf '%s' "$lib_path"
 }
 
 # WebKit 4.1 依赖 FreeType >= 2.10.4（FT_Get_Color_Glyph_Paint），麒麟系统自带版本过旧，必须内置构建机库。
@@ -429,6 +495,8 @@ libxml2.so.2
 libxslt.so.1
 libsqlite3.so.0
 libepoxy.so.0
+libgbm.so.1
+libdrm.so.2
 libjavascriptcoregtk-4.1.so.0
 libwebkit2gtk-4.1.so.0
 libsoup-3.0.so.0
@@ -503,19 +571,63 @@ kylin_ensure_freetype_for_webkit() {
   return 1
 }
 
+kylin_ensure_gbm_for_webkit() {
+  local app_dir="$1"
+  local dest="$app_dir/usr/lib/libgbm.so.1"
+  local lib_path
+
+  if kylin_gbm_has_webkit_symbol "$dest"; then
+    echo "  libgbm.so.1 已满足 WebKit 要求（含 gbm_bo_create_with_modifiers2）"
+    return 0
+  fi
+
+  lib_path="$(kylin_webkit_ldd_lib_path "$app_dir" 'libgbm\.so' || true)"
+  if [[ -n "$lib_path" ]]; then
+    echo "  内置 libgbm.so.1（WebKit ldd）<- $lib_path"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    if kylin_gbm_has_webkit_symbol "$dest"; then
+      return 0
+    fi
+  fi
+
+  lib_path="$(kylin_find_lib_on_system libgbm.so.1 || true)"
+  if [[ -n "$lib_path" ]]; then
+    echo "  内置 libgbm.so.1（系统）<- $lib_path"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    if kylin_gbm_has_webkit_symbol "$dest"; then
+      return 0
+    fi
+  fi
+
+  echo "  系统 GBM 版本过旧，下载 Ubuntu 24.04 libgbm1 + libdrm2..."
+  if kylin_fetch_noble_gbm_stack "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_gbm_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 24.04 libgbm.so.1"
+      return 0
+    fi
+  fi
+
+  echo "错误：无法获取含 gbm_bo_create_with_modifiers2 的 libgbm.so.1" >&2
+  return 1
+}
+
 kylin_copy_font_and_webkit_libs() {
   local app_dir="$1"
   local lib_name
 
-  echo "=== 内置 WebKit / FreeType 字体栈（避免麒麟系统旧版 libfreetype）==="
+  echo "=== 内置 WebKit 运行时库（FreeType / GBM 等，避免麒麟系统旧版库）==="
 
   if ! kylin_ensure_freetype_for_webkit "$app_dir"; then
+    return 1
+  fi
+  if ! kylin_ensure_gbm_for_webkit "$app_dir"; then
     return 1
   fi
 
   while IFS= read -r lib_name; do
     [[ -n "$lib_name" ]] || continue
-    [[ "$lib_name" == "libfreetype.so.6" ]] && continue
+    [[ "$lib_name" == "libfreetype.so.6" || "$lib_name" == "libgbm.so.1" ]] && continue
     if [[ -f "$app_dir/usr/lib/$lib_name" ]]; then
       echo "  已存在: $lib_name"
     elif kylin_copy_named_lib_to_app "$lib_name" "$app_dir"; then
@@ -543,7 +655,28 @@ kylin_patch_webkit_rpath() {
   while IFS= read -r -d '' lib; do
     file "$lib" 2>/dev/null | grep -q 'ELF .* shared object' || continue
     patchelf --set-rpath "$rpath" "$lib" 2>/dev/null || true
-  done < <(find "$app_dir/usr/lib" -maxdepth 1 -type f \( -name 'libwebkit*.so.*' -o -name 'libjavascriptcore*.so.*' -o -name 'libfreetype.so.*' -o -name 'libfontconfig.so.*' -o -name 'libharfbuzz*.so.*' -o -name 'libsoup-3.0.so.*' \) -print0 2>/dev/null)
+  done < <(find "$app_dir/usr/lib" -maxdepth 1 -type f \( -name 'libwebkit*.so.*' -o -name 'libjavascriptcore*.so.*' -o -name 'libfreetype.so.*' -o -name 'libfontconfig.so.*' -o -name 'libharfbuzz*.so.*' -o -name 'libsoup-3.0.so.*' -o -name 'libgbm.so.*' -o -name 'libdrm.so.*' \) -print0 2>/dev/null)
+}
+
+kylin_verify_gbm_for_webkit() {
+  local app_dir="$1"
+  local strict="${KYLIN_VERIFY_STRICT:-0}"
+  local gbm="$app_dir/usr/lib/libgbm.so.1"
+
+  if [[ ! -f "$gbm" ]]; then
+    echo "错误：未内置 libgbm.so.1，WebKit 将回退到麒麟系统旧版 GBM" >&2
+    [[ "$strict" == "1" ]] && return 1
+    return 0
+  fi
+
+  if kylin_gbm_has_webkit_symbol "$gbm"; then
+    echo "libgbm 已包含 gbm_bo_create_with_modifiers2（WebKit 所需）。"
+    return 0
+  fi
+
+  echo "错误：内置 libgbm.so.1 缺少 gbm_bo_create_with_modifiers2" >&2
+  [[ "$strict" == "1" ]] && return 1
+  return 0
 }
 
 kylin_verify_freetype_for_webkit() {
@@ -660,9 +793,9 @@ kylin_copy_runtime_libs() {
           if kylin_is_glibc_runtime_lib "$lib_basename"; then
             copy_lib "$lib_path" "$compat_dir"
             missing=1
-          elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* ]]; then
+          elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* || "$lib_basename" == libgbm.so.* || "$lib_basename" == libdrm.so.* ]]; then
             :
-            # 不通过 ldd 回拷旧版 freetype/font 库，由 kylin_ensure_freetype_for_webkit 统一处理
+            # 不通过 ldd 回拷旧版字体/GBM 库，由 ensure 步骤统一处理
           elif [[ -f "$lib_path" && ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
             copy_lib "$lib_path" "$app_dir/usr/lib" 1
             missing=1
@@ -739,6 +872,7 @@ kylin_verify_bundle() {
   fi
 
   kylin_verify_freetype_for_webkit "$app_dir" || return 1
+  kylin_verify_gbm_for_webkit "$app_dir" || return 1
 
   return 0
 }

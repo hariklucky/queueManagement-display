@@ -64,6 +64,20 @@ else
   exit 1
 fi
 
+if [[ -f "$WORKDIR/extract/opt/qms/usr/lib/libgbm.so.1" ]]; then
+  gbm="$WORKDIR/extract/opt/qms/usr/lib/libgbm.so.1"
+  if objdump -T "$gbm" 2>/dev/null | grep -Fq 'gbm_bo_create_with_modifiers2' \
+    || nm -D --defined-only "$gbm" 2>/dev/null | grep -Fq 'gbm_bo_create_with_modifiers2'; then
+    echo "deb 已内置含 gbm_bo_create_with_modifiers2 的 libgbm.so.1。"
+  else
+    echo "错误：deb 中 libgbm.so.1 缺少 gbm_bo_create_with_modifiers2" >&2
+    exit 1
+  fi
+else
+  echo "错误：deb 中缺少 usr/lib/libgbm.so.1" >&2
+  exit 1
+fi
+
 if [[ -x "$WORKDIR/extract/usr/bin/"* ]] 2>/dev/null || find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | grep -q .; then
   launcher="$(find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | head -n 1)"
   if grep -q 'GDK_BACKEND=x11' "$launcher" && grep -q 'glibc-compat' "$launcher"; then

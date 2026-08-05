@@ -129,6 +129,18 @@ export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 unset LD_PRELOAD
+
+kylin_prepare_runtime() {
+  case "\$(uname -m)" in
+    aarch64|arm64) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
+    x86_64|amd64) WEBKIT_LIB_ARCH=x86_64-linux-gnu ;;
+    *) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
+  esac
+  export WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
+  export APPDIR="\$APP_ROOT"
+  cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
+}
+
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
 LOG_FILE="\$LOG_DIR/launch.log"
@@ -156,6 +168,7 @@ if [ ! -f "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
   exit 127
 fi
 chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
+kylin_prepare_runtime
 
 if [ -t 2 ]; then
   kylin_run_app "\$@"
@@ -202,6 +215,18 @@ export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 unset LD_PRELOAD
+
+kylin_prepare_runtime() {
+  case "\$(uname -m)" in
+    aarch64|arm64) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
+    x86_64|amd64) WEBKIT_LIB_ARCH=x86_64-linux-gnu ;;
+    *) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
+  esac
+  export WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
+  export APPDIR="\$APP_ROOT"
+  cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
+}
+
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
 LOG_FILE="\$LOG_DIR/launch.log"
@@ -229,6 +254,7 @@ if [ ! -f "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
   exit 127
 fi
 chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
+kylin_prepare_runtime
 
 if [ -t 2 ]; then
   kylin_run_app "\$@"
@@ -282,10 +308,22 @@ export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 unset LD_PRELOAD
 
+kylin_prepare_runtime() {
+  case "\$(uname -m)" in
+    aarch64|arm64) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
+    x86_64|amd64) WEBKIT_LIB_ARCH=x86_64-linux-gnu ;;
+    *) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
+  esac
+  export WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
+  export APPDIR="\$APP_ROOT"
+  cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
+}
+
 kylin_sym_ok() {
   _lib="\$1"
   _sym="\$2"
-  strings "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
+  objdump -T "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
+  nm -D --defined-only "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
   return 1
 }
 
@@ -303,27 +341,68 @@ for lib in libfreetype.so.6 libgbm.so.1 libdrm.so.2 libwebkit2gtk-4.1.so.0 libgt
   fi
 done
 echo
+_launch_ok=1
+echo "=== WebKit 子进程 ==="
+kylin_prepare_runtime
+for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+  if [ -x "\$WEBKIT_EXEC_PATH/\$helper" ]; then
+    echo "  已内置: \$helper"
+  else
+    echo "  缺少: \$helper"
+    if [ "\$helper" = "WebKitNetworkProcess" ]; then
+      _launch_ok=0
+    fi
+  fi
+done
+echo "WEBKIT_EXEC_PATH=\$WEBKIT_EXEC_PATH"
+echo
 echo "=== FreeType / GBM 符号 ==="
 if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
   if kylin_sym_ok "\$APP_ROOT/usr/lib/libfreetype.so.6" FT_Get_Color_Glyph_Paint; then
     echo "libfreetype 包含 FT_Get_Color_Glyph_Paint"
   else
-    echo "警告：libfreetype 缺少 FT_Get_Color_Glyph_Paint"
+    echo "错误：libfreetype 缺少 FT_Get_Color_Glyph_Paint" >&2
+    _launch_ok=0
   fi
 else
-  echo "警告：未 bundled libfreetype.so.6"
+  echo "错误：未 bundled libfreetype.so.6" >&2
+  _launch_ok=0
 fi
 if [ -f "\$APP_ROOT/usr/lib/libgbm.so.1" ]; then
   if kylin_sym_ok "\$APP_ROOT/usr/lib/libgbm.so.1" gbm_bo_create_with_modifiers2; then
     echo "libgbm 包含 gbm_bo_create_with_modifiers2"
   else
-    echo "警告：libgbm 缺少 gbm_bo_create_with_modifiers2"
+    echo "错误：libgbm 缺少 gbm_bo_create_with_modifiers2" >&2
+    _launch_ok=0
   fi
 else
-  echo "警告：未 bundled libgbm.so.1（WebKit 将回退麒麟系统旧版 GBM）"
+  echo "错误：未 bundled libgbm.so.1" >&2
+  _launch_ok=0
 fi
 echo
+echo "=== 子进程 loader 检查 ==="
+_helper="\$WEBKIT_EXEC_PATH/WebKitNetworkProcess"
+if [ -x "\$_helper" ]; then
+  _interp="\$(readelf -l "\$_helper" 2>/dev/null | awk '/Requesting program interpreter/ { gsub(/[][]/, "", \$NF); print \$NF; exit }')"
+  if [ -n "\$_interp" ]; then
+    echo "WebKitNetworkProcess interpreter: \$_interp"
+    if [ ! -f "\$_interp" ]; then
+      echo "错误：子进程 loader 不存在（Linux 会报「没有那个文件或目录」）" >&2
+      _launch_ok=0
+    fi
+  fi
+else
+  echo "错误：缺少 WebKitNetworkProcess: \$_helper" >&2
+  _launch_ok=0
+fi
+echo
+if [ "\${_launch_ok:-1}" = "0" ]; then
+  echo "=== 诊断未通过，跳过启动 ===" >&2
+  echo "请重新安装最新 deb 包（需含 WebKit 子进程与新版 FreeType/GBM）。" >&2
+  exit 1
+fi
 echo "=== 尝试启动 ==="
+kylin_prepare_runtime
 exec "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
 EOF
   chmod 755 "$output"
@@ -456,6 +535,29 @@ kylin_extract_deb_libs() {
     done < <(find "$workdir/extract" \( -name '*.so' -o -name '*.so.*' \) -type f -print0 2>/dev/null)
   fi
   rm -rf "$workdir"
+  return 0
+}
+
+kylin_fetch_jammy_gbm_stack() {
+  local dest_dir="$1"
+  local drm_url gbm_url
+
+  case "$(uname -m)" in
+    aarch64|arm64)
+      drm_url="http://ports.ubuntu.com/pool/main/libd/libdrm/libdrm2_2.4.113-2~ubuntu0.22.04.1_arm64.deb"
+      gbm_url="http://ports.ubuntu.com/pool/main/m/mesa/libgbm1_23.2.1-1ubuntu3.1~22.04.3_arm64.deb"
+      ;;
+    x86_64|amd64)
+      drm_url="http://archive.ubuntu.com/ubuntu/pool/main/libd/libdrm/libdrm2_2.4.113-2~ubuntu0.22.04.1_amd64.deb"
+      gbm_url="http://archive.ubuntu.com/ubuntu/pool/main/m/mesa/libgbm1_23.2.1-1ubuntu3.1~22.04.3_amd64.deb"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  kylin_extract_deb_libs "$drm_url" "$dest_dir" || return 1
+  kylin_extract_deb_libs "$gbm_url" "$dest_dir" || return 1
   return 0
 }
 
@@ -628,8 +730,16 @@ kylin_ensure_gbm_for_webkit() {
     fi
   fi
 
-  echo "  系统 GBM 版本过旧，尝试下载 Ubuntu 24.04 libgbm1 + libdrm2..."
-  echo "  警告：Noble GBM 可能在部分麒麟 CPU 上不兼容，优先使用构建机 libgbm" >&2
+  echo "  系统 GBM 版本过旧，尝试下载 Ubuntu 22.04 libgbm1 + libdrm2..."
+  if kylin_fetch_jammy_gbm_stack "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_gbm_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 22.04 libgbm.so.1"
+      return 0
+    fi
+  fi
+
+  echo "  警告：Jammy GBM 仍不满足要求，尝试 Ubuntu 24.04（部分麒麟 CPU 可能 Illegal instruction）..." >&2
   if kylin_fetch_noble_gbm_stack "$app_dir/usr/lib"; then
     kylin_bundle_single_lib_deps "$dest" "$app_dir"
     if kylin_gbm_has_webkit_symbol "$dest"; then
@@ -660,6 +770,169 @@ kylin_ensure_gtk_glib_bundled() {
   done
 }
 
+kylin_multilib_dir() {
+  case "${1:-$(uname -m)}" in
+    aarch64|arm64) echo "aarch64-linux-gnu" ;;
+    x86_64|amd64) echo "x86_64-linux-gnu" ;;
+    *)
+      echo "错误：不支持的架构 \"${1:-$(uname -m)}\"" >&2
+      return 1
+      ;;
+  esac
+}
+
+kylin_webkit_helper_dir() {
+  local app_dir="$1"
+  echo "$app_dir/usr/lib/$(kylin_multilib_dir)/webkit2gtk-4.1"
+}
+
+kylin_fetch_webkit_helpers_from_deb() {
+  local dest_dir="$1"
+  local helper_path helper_dir helper pkg
+
+  if command -v dpkg >/dev/null 2>&1; then
+    for pkg in libwebkit2gtk-4.1-0 libwebkit2gtk-4.0-37; do
+      helper_path="$(dpkg -L "$pkg" 2>/dev/null | grep '/WebKitNetworkProcess$' | head -n 1 || true)"
+      [[ -n "$helper_path" && -f "$helper_path" ]] && break
+      helper_path=""
+    done
+    if [[ -n "$helper_path" && -f "$helper_path" ]]; then
+      helper_dir="${helper_path%/*}"
+      for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+        [[ -f "$helper_dir/$helper" ]] || continue
+        cp -f "$helper_dir/$helper" "$dest_dir/"
+        chmod +x "$dest_dir/$helper"
+        echo "  已内置: $helper <- $pkg ($helper_dir/$helper)"
+      done
+      [[ -x "$dest_dir/WebKitNetworkProcess" ]] && return 0
+    fi
+  fi
+
+  local deb_url
+  case "$(uname -m)" in
+    aarch64|arm64)
+      deb_url="http://ports.ubuntu.com/pool/main/w/webkit2gtk/libwebkit2gtk-4.1-0_2.44.0-2_arm64.deb"
+      ;;
+    x86_64|amd64)
+      deb_url="http://archive.ubuntu.com/ubuntu/pool/main/w/webkit2gtk/libwebkit2gtk-4.1-0_2.44.0-2_amd64.deb"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  local workdir="$dest_dir/.webkit-helper-fetch"
+  rm -rf "$workdir"
+  mkdir -p "$workdir"
+  if ! curl -fsSL -o "$workdir/pkg.deb" "$deb_url"; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  dpkg-deb -x "$workdir/pkg.deb" "$workdir/extract"
+  helper_path="$(find "$workdir/extract" -name 'WebKitNetworkProcess' -type f | head -n 1 || true)"
+  if [[ -z "$helper_path" || ! -f "$helper_path" ]]; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  helper_dir="${helper_path%/*}"
+  for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+    [[ -f "$helper_dir/$helper" ]] || continue
+    cp -f "$helper_dir/$helper" "$dest_dir/"
+    chmod +x "$dest_dir/$helper"
+    echo "  已内置: $helper <- Ubuntu deb"
+  done
+  rm -rf "$workdir"
+  [[ -x "$dest_dir/WebKitNetworkProcess" ]]
+}
+
+kylin_copy_webkit_helpers() {
+  local app_dir="$1"
+  local multilib dest src helper copied=0 found_helper
+
+  multilib="$(kylin_multilib_dir)"
+  dest="$(kylin_webkit_helper_dir "$app_dir")"
+  mkdir -p "$dest"
+
+  echo "=== 内置 WebKit 子进程（WebKitNetworkProcess 等）==="
+  for src in \
+    "$app_dir/usr/lib/$multilib/webkit2gtk-4.1" \
+    "/usr/lib/$multilib/webkit2gtk-4.1" \
+    "/usr/libexec/webkit2gtk-4.1" \
+    "/usr/lib/webkit2gtk-4.1"; do
+    [[ -d "$src" ]] || continue
+    for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+      [[ -f "$src/$helper" ]] || continue
+      cp -f "$src/$helper" "$dest/"
+      chmod +x "$dest/$helper"
+      echo "  已内置: $helper <- $src/$helper"
+      copied=1
+    done
+  done
+
+  if [[ ! -x "$dest/WebKitNetworkProcess" ]]; then
+    found_helper="$(find "$app_dir" -name 'WebKitNetworkProcess' -type f 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$found_helper" && -f "$found_helper" ]]; then
+      src="${found_helper%/*}"
+      for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+        [[ -f "$src/$helper" ]] || continue
+        cp -f "$src/$helper" "$dest/"
+        chmod +x "$dest/$helper"
+        echo "  已内置: $helper <- $found_helper"
+        copied=1
+      done
+    fi
+  fi
+
+  if [[ ! -x "$dest/WebKitNetworkProcess" ]]; then
+    echo "  构建机未找到 WebKit 子进程，尝试下载 Ubuntu 22.04 libwebkit2gtk-4.1-0..."
+    if kylin_fetch_webkit_helpers_from_deb "$dest"; then
+      copied=1
+    fi
+  fi
+
+  if [[ ! -x "$dest/WebKitNetworkProcess" ]]; then
+    echo "错误：未找到 WebKitNetworkProcess，WebKit 无法在麒麟上运行" >&2
+    echo "  期望路径: $dest/WebKitNetworkProcess" >&2
+    return 1
+  fi
+  return 0
+}
+
+kylin_patch_webkit_helpers() {
+  local app_dir="$1"
+  local interp_path="$2"
+  local dest helper multilib
+
+  command -v patchelf >/dev/null 2>&1 || return 0
+  multilib="$(kylin_multilib_dir)"
+  dest="$app_dir/usr/lib/$multilib/webkit2gtk-4.1"
+  [[ -d "$dest" ]] || return 0
+
+  local rpath='$ORIGIN/../../glibc-compat:$ORIGIN/../..'
+  for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+    [[ -f "$dest/$helper" ]] || continue
+    file "$dest/$helper" 2>/dev/null | grep -q 'ELF .* executable' || continue
+    patchelf --set-interpreter "$interp_path" "$dest/$helper" 2>/dev/null || true
+    patchelf --set-rpath "$rpath" "$dest/$helper" 2>/dev/null || true
+  done
+}
+
+kylin_verify_webkit_helpers() {
+  local app_dir="$1"
+  local strict="${KYLIN_VERIFY_STRICT:-0}"
+  local dest
+
+  dest="$(kylin_webkit_helper_dir "$app_dir")"
+  if [[ -x "$dest/WebKitNetworkProcess" ]]; then
+    echo "WebKit 子进程已内置: $dest/WebKitNetworkProcess"
+    return 0
+  fi
+
+  echo "错误：缺少 WebKit 子进程 $dest/WebKitNetworkProcess" >&2
+  [[ "$strict" == "1" ]] && return 1
+  return 0
+}
+
 kylin_copy_font_and_webkit_libs() {
   local app_dir="$1"
   local lib_name
@@ -673,6 +946,9 @@ kylin_copy_font_and_webkit_libs() {
     return 1
   fi
   kylin_ensure_gtk_glib_bundled "$app_dir"
+  if ! kylin_copy_webkit_helpers "$app_dir"; then
+    return 1
+  fi
 
   while IFS= read -r lib_name; do
     [[ -n "$lib_name" ]] || continue
@@ -922,6 +1198,7 @@ kylin_verify_bundle() {
 
   kylin_verify_freetype_for_webkit "$app_dir" || return 1
   kylin_verify_gbm_for_webkit "$app_dir" || return 1
+  kylin_verify_webkit_helpers "$app_dir" || return 1
 
   return 0
 }

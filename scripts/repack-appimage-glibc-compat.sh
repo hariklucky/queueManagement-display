@@ -66,6 +66,8 @@ echo "主程序: usr/bin/$MAIN_BIN"
 echo "=== 确保 WebKit 所需 FreeType / GBM 已内置 ==="
 kylin_ensure_freetype_for_webkit "$ROOT"
 kylin_ensure_gbm_for_webkit "$ROOT"
+kylin_copy_webkit_helpers "$ROOT"
+kylin_patch_webkit_helpers "$ROOT" "\$ORIGIN/../lib/glibc-compat/$LD_LINUX"
 kylin_patch_webkit_rpath "$ROOT"
 
 echo "=== 修补 ELF RPATH / interpreter ==="

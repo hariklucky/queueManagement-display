@@ -78,6 +78,14 @@ else
   exit 1
 fi
 
+webkit_helper="$(find "$WORKDIR/extract/opt/qms/usr/lib" -path '*/webkit2gtk-4.1/WebKitNetworkProcess' -type f | head -n 1 || true)"
+if [[ -x "$webkit_helper" ]]; then
+  echo "deb 已内置 WebKit 子进程: ${webkit_helper#"$WORKDIR/extract/opt/qms/"}"
+else
+  echo "错误：deb 中缺少 WebKitNetworkProcess 子进程" >&2
+  exit 1
+fi
+
 if [[ -x "$WORKDIR/extract/usr/bin/"* ]] 2>/dev/null || find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | grep -q .; then
   launcher="$(find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | head -n 1)"
   if grep -q 'GDK_BACKEND=x11' "$launcher" && grep -q 'glibc-compat' "$launcher"; then

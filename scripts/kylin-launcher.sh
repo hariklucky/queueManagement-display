@@ -786,6 +786,35 @@ kylin_webkit_helper_dir() {
   echo "$app_dir/usr/lib/$(kylin_multilib_dir)/webkit2gtk-4.1"
 }
 
+kylin_same_path() {
+  local a="$1" b="$2"
+  [[ -e "$a" && -e "$b" ]] || return 1
+  if command -v readlink >/dev/null 2>&1; then
+    a="$(readlink -f "$a" 2>/dev/null || echo "$a")"
+    b="$(readlink -f "$b" 2>/dev/null || echo "$b")"
+  fi
+  [[ "$a" == "$b" ]]
+}
+
+kylin_install_webkit_helper() {
+  local src_file="$1"
+  local dest_dir="$2"
+  local helper_name dest_file
+
+  [[ -f "$src_file" ]] || return 1
+  helper_name="$(basename "$src_file")"
+  dest_file="$dest_dir/$helper_name"
+  if kylin_same_path "$src_file" "$dest_file"; then
+    chmod +x "$dest_file" 2>/dev/null || true
+    echo "  已存在: $helper_name ($dest_file)"
+    return 0
+  fi
+  cp -f "$src_file" "$dest_dir/"
+  chmod +x "$dest_file"
+  echo "  已内置: $helper_name <- $src_file"
+  return 0
+}
+
 kylin_fetch_webkit_helpers_from_deb() {
   local dest_dir="$1"
   local helper_path helper_dir helper pkg
@@ -800,9 +829,7 @@ kylin_fetch_webkit_helpers_from_deb() {
       helper_dir="${helper_path%/*}"
       for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
         [[ -f "$helper_dir/$helper" ]] || continue
-        cp -f "$helper_dir/$helper" "$dest_dir/"
-        chmod +x "$dest_dir/$helper"
-        echo "  已内置: $helper <- $pkg ($helper_dir/$helper)"
+        kylin_install_webkit_helper "$helper_dir/$helper" "$dest_dir"
       done
       [[ -x "$dest_dir/WebKitNetworkProcess" ]] && return 0
     fi
@@ -837,9 +864,7 @@ kylin_fetch_webkit_helpers_from_deb() {
   helper_dir="${helper_path%/*}"
   for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
     [[ -f "$helper_dir/$helper" ]] || continue
-    cp -f "$helper_dir/$helper" "$dest_dir/"
-    chmod +x "$dest_dir/$helper"
-    echo "  已内置: $helper <- Ubuntu deb"
+    kylin_install_webkit_helper "$helper_dir/$helper" "$dest_dir"
   done
   rm -rf "$workdir"
   [[ -x "$dest_dir/WebKitNetworkProcess" ]]
@@ -847,47 +872,55 @@ kylin_fetch_webkit_helpers_from_deb() {
 
 kylin_copy_webkit_helpers() {
   local app_dir="$1"
-  local multilib dest src helper copied=0 found_helper
+  local multilib dest src helper found_helper
 
   multilib="$(kylin_multilib_dir)"
   dest="$(kylin_webkit_helper_dir "$app_dir")"
   mkdir -p "$dest"
 
   echo "=== 内置 WebKit 子进程（WebKitNetworkProcess 等）==="
+  if [[ -f "$dest/WebKitNetworkProcess" ]]; then
+    chmod +x "$dest/WebKitNetworkProcess" 2>/dev/null || true
+    for helper in WebKitWebProcess WebKitGPUProcess; do
+      [[ -f "$dest/$helper" ]] && chmod +x "$dest/$helper" 2>/dev/null || true
+    done
+    echo "  已存在: WebKitNetworkProcess ($dest/WebKitNetworkProcess)"
+    for helper in WebKitWebProcess WebKitGPUProcess; do
+      [[ -f "$dest/$helper" ]] && echo "  已存在: $helper"
+    done
+    return 0
+  fi
+
   for src in \
     "$app_dir/usr/lib/$multilib/webkit2gtk-4.1" \
     "/usr/lib/$multilib/webkit2gtk-4.1" \
     "/usr/libexec/webkit2gtk-4.1" \
     "/usr/lib/webkit2gtk-4.1"; do
     [[ -d "$src" ]] || continue
+    [[ "$(readlink -f "$src" 2>/dev/null || echo "$src")" == "$(readlink -f "$dest" 2>/dev/null || echo "$dest")" ]] && continue
     for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
       [[ -f "$src/$helper" ]] || continue
-      cp -f "$src/$helper" "$dest/"
-      chmod +x "$dest/$helper"
-      echo "  已内置: $helper <- $src/$helper"
-      copied=1
+      kylin_install_webkit_helper "$src/$helper" "$dest"
     done
+    [[ -x "$dest/WebKitNetworkProcess" ]] && return 0
   done
 
   if [[ ! -x "$dest/WebKitNetworkProcess" ]]; then
     found_helper="$(find "$app_dir" -name 'WebKitNetworkProcess' -type f 2>/dev/null | head -n 1 || true)"
     if [[ -n "$found_helper" && -f "$found_helper" ]]; then
       src="${found_helper%/*}"
-      for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
-        [[ -f "$src/$helper" ]] || continue
-        cp -f "$src/$helper" "$dest/"
-        chmod +x "$dest/$helper"
-        echo "  已内置: $helper <- $found_helper"
-        copied=1
-      done
+      if ! kylin_same_path "$src" "$dest"; then
+        for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
+          [[ -f "$src/$helper" ]] || continue
+          kylin_install_webkit_helper "$src/$helper" "$dest"
+        done
+      fi
     fi
   fi
 
   if [[ ! -x "$dest/WebKitNetworkProcess" ]]; then
     echo "  构建机未找到 WebKit 子进程，尝试下载 Ubuntu 22.04 libwebkit2gtk-4.1-0..."
-    if kylin_fetch_webkit_helpers_from_deb "$dest"; then
-      copied=1
-    fi
+    kylin_fetch_webkit_helpers_from_deb "$dest" || true
   fi
 
   if [[ ! -x "$dest/WebKitNetworkProcess" ]]; then

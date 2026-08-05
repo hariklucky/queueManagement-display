@@ -51,8 +51,9 @@ if [[ ! -x "$loader" ]]; then
   exit 1
 fi
 if [[ -f "$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6" ]]; then
-  if nm -D "$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint' \
-    || readelf -Ws "$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+  freetype="$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6"
+  if objdump -T "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint' \
+    || nm -D --defined-only "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
     echo "deb 已内置含 FT_Get_Color_Glyph_Paint 的 libfreetype.so.6。"
   else
     echo "错误：deb 中 libfreetype.so.6 缺少 FT_Get_Color_Glyph_Paint" >&2

@@ -325,13 +325,11 @@ kylin_find_lib_in_app() {
 kylin_freetype_has_webkit_symbol() {
   local freetype="$1"
   [[ -f "$freetype" ]] || return 1
-  if nm -D "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+  # 仅检查动态符号表（WebKit 运行时通过动态链接解析）
+  if objdump -T "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
     return 0
   fi
-  if readelf -Ws "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
-    return 0
-  fi
-  if objdump -T "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+  if nm -D --defined-only "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
     return 0
   fi
   return 1
@@ -559,7 +557,7 @@ kylin_verify_freetype_for_webkit() {
     return 0
   fi
 
-  if nm -D "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+  if kylin_freetype_has_webkit_symbol "$freetype"; then
     echo "libfreetype 已包含 FT_Get_Color_Glyph_Paint（WebKit 所需）。"
     return 0
   fi
@@ -662,14 +660,12 @@ kylin_copy_runtime_libs() {
           if kylin_is_glibc_runtime_lib "$lib_basename"; then
             copy_lib "$lib_path" "$compat_dir"
             missing=1
-          elif [[ -f "$lib_path" ]]; then
-            if [[ ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
-              copy_lib "$lib_path" "$app_dir/usr/lib" 1
-              missing=1
-            elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* ]]; then
-              copy_lib "$lib_path" "$app_dir/usr/lib" 1
-              missing=1
-            fi
+          elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* ]]; then
+            :
+            # 不通过 ldd 回拷旧版 freetype/font 库，由 kylin_ensure_freetype_for_webkit 统一处理
+          elif [[ -f "$lib_path" && ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
+            copy_lib "$lib_path" "$app_dir/usr/lib" 1
+            missing=1
           fi
         fi
       done < <("$loader" --library-path "$libpath" ldd "$target" 2>/dev/null || true)

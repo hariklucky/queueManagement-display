@@ -261,8 +261,23 @@ echo "APP_ROOT=\$APP_ROOT"
 echo "MAIN_BIN=\$MAIN_BIN"
 echo "LIBPATH=\$LIBPATH"
 echo
-echo "=== 主程序依赖 (bundled loader) ==="
-"\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" --library-path "\$LIBPATH" ldd "\$APP_ROOT/usr/bin/\$MAIN_BIN" || true
+echo "=== 主程序依赖 ==="
+LD_LIBRARY_PATH="$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
+echo
+echo "=== WebKit / FreeType ==="
+if [ -f "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" ]; then
+  LD_LIBRARY_PATH="$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" 2>/dev/null | grep -E 'freetype|fontconfig|harfbuzz|not found' || true
+else
+  echo "未找到 libwebkit2gtk-4.1.so.0"
+fi
+ls -la "\$APP_ROOT/usr/lib/libfreetype.so.6" 2>/dev/null || echo "警告：未 bundled libfreetype.so.6"
+if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
+  if nm -D "\$APP_ROOT/usr/lib/libfreetype.so.6" 2>/dev/null | grep -q FT_Get_Color_Glyph_Paint; then
+    echo "libfreetype 包含 FT_Get_Color_Glyph_Paint"
+  else
+    echo "警告：libfreetype 缺少 FT_Get_Color_Glyph_Paint（WebKit 将无法启动）"
+  fi
+fi
 echo
 echo "=== 尝试启动 ==="
 exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
@@ -281,6 +296,113 @@ kylin_find_lib_on_system() {
   return 1
 }
 
+# WebKit 4.1 依赖 FreeType >= 2.10.4（FT_Get_Color_Glyph_Paint），麒麟系统自带版本过旧，必须内置构建机库。
+kylin_explicit_app_libs() {
+  cat <<'EOF'
+libfreetype.so.6
+libfontconfig.so.1
+libharfbuzz.so.0
+libharfbuzz-icu.so.0
+libharfbuzz-subset.so.0
+libpng16.so.16
+libjpeg.so.8
+libwebp.so.7
+libwebpmux.so.3
+libwebpdemux.so.2
+libbrotlicommon.so.1
+libbrotlidec.so.1
+libbrotlienc.so.1
+libexpat.so.1
+libxml2.so.2
+libxslt.so.1
+libsqlite3.so.0
+libepoxy.so.0
+libjavascriptcoregtk-4.1.so.0
+libwebkit2gtk-4.1.so.0
+libsoup-3.0.so.0
+libicuuc.so.70
+libicudata.so.70
+libicui18n.so.70
+EOF
+}
+
+kylin_copy_lib_force() {
+  local src="$1"
+  local dest_dir="$2"
+  [[ -f "$src" ]] || return 1
+  mkdir -p "$dest_dir"
+  cp -Lf "$src" "$dest_dir/"
+}
+
+kylin_copy_named_lib_to_app() {
+  local lib_name="$1"
+  local app_dir="$2"
+  local lib_path
+  lib_path="$(kylin_find_lib_on_system "$lib_name" || true)"
+  if [[ -n "$lib_path" ]]; then
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    return 0
+  fi
+  return 1
+}
+
+kylin_copy_font_and_webkit_libs() {
+  local app_dir="$1"
+  local lib_name
+
+  echo "=== 内置 WebKit / FreeType 字体栈（避免麒麟系统旧版 libfreetype）==="
+  while IFS= read -r lib_name; do
+    [[ -n "$lib_name" ]] || continue
+    if kylin_copy_named_lib_to_app "$lib_name" "$app_dir"; then
+      echo "  已内置: $lib_name"
+    else
+      echo "  跳过（构建机未找到）: $lib_name"
+    fi
+  done < <(kylin_explicit_app_libs)
+
+  # 按实际 SONAME 再补一轮（如 libicuuc.so.72）
+  local icu_lib
+  for icu_lib in /usr/lib/*/libicuuc.so.* /lib/*/libicuuc.so.*; do
+    [[ -f "$icu_lib" ]] || continue
+    kylin_copy_lib_force "$icu_lib" "$app_dir/usr/lib"
+    kylin_copy_lib_force "${icu_lib%/*}/libicudata.so.${icu_lib##*.so.}" "$app_dir/usr/lib" 2>/dev/null || true
+    kylin_copy_lib_force "${icu_lib%/*}/libicui18n.so.${icu_lib##*.so.}" "$app_dir/usr/lib" 2>/dev/null || true
+    break
+  done
+}
+
+kylin_patch_webkit_rpath() {
+  local app_dir="$1"
+  command -v patchelf >/dev/null 2>&1 || return 0
+
+  local lib rpath='$ORIGIN'
+  while IFS= read -r -d '' lib; do
+    file "$lib" 2>/dev/null | grep -q 'ELF .* shared object' || continue
+    patchelf --set-rpath "$rpath" "$lib" 2>/dev/null || true
+  done < <(find "$app_dir/usr/lib" -maxdepth 1 -type f \( -name 'libwebkit*.so.*' -o -name 'libjavascriptcore*.so.*' -o -name 'libfreetype.so.*' -o -name 'libfontconfig.so.*' -o -name 'libharfbuzz*.so.*' -o -name 'libsoup-3.0.so.*' \) -print0 2>/dev/null)
+}
+
+kylin_verify_freetype_for_webkit() {
+  local app_dir="$1"
+  local strict="${KYLIN_VERIFY_STRICT:-0}"
+  local freetype="$app_dir/usr/lib/libfreetype.so.6"
+
+  if [[ ! -f "$freetype" ]]; then
+    echo "错误：未内置 libfreetype.so.6，WebKit 将回退到麒麟系统旧版 FreeType" >&2
+    [[ "$strict" == "1" ]] && return 1
+    return 0
+  fi
+
+  if nm -D "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+    echo "libfreetype 已包含 FT_Get_Color_Glyph_Paint（WebKit 所需）。"
+    return 0
+  fi
+
+  echo "错误：内置 libfreetype.so.6 缺少 FT_Get_Color_Glyph_Paint" >&2
+  [[ "$strict" == "1" ]] && return 1
+  return 0
+}
+
 kylin_copy_runtime_libs() {
   local compat_dir="$1"
   local glib_dir="$2"
@@ -292,7 +414,14 @@ kylin_copy_runtime_libs() {
   copy_lib() {
     local src="$1"
     local dest_dir="${2:-$compat_dir}"
-    if [[ -f "$src" ]]; then
+    local force="${3:-0}"
+    if [[ ! -f "$src" ]]; then
+      return 1
+    fi
+    mkdir -p "$dest_dir"
+    if [[ "$force" == "1" || "$dest_dir" == "$app_dir/usr/lib" ]]; then
+      cp -Lf "$src" "$dest_dir/"
+    else
       cp -Lfn "$src" "$dest_dir/"
     fi
   }
@@ -367,9 +496,14 @@ kylin_copy_runtime_libs() {
           if kylin_is_glibc_runtime_lib "$lib_basename"; then
             copy_lib "$lib_path" "$compat_dir"
             missing=1
-          elif [[ -f "$lib_path" && ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
-            copy_lib "$lib_path" "$app_dir/usr/lib"
-            missing=1
+          elif [[ -f "$lib_path" ]]; then
+            if [[ ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
+              copy_lib "$lib_path" "$app_dir/usr/lib" 1
+              missing=1
+            elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz*.so.* ]]; then
+              copy_lib "$lib_path" "$app_dir/usr/lib" 1
+              missing=1
+            fi
           fi
         fi
       done < <("$loader" --library-path "$libpath" ldd "$target" 2>/dev/null || true)
@@ -377,6 +511,9 @@ kylin_copy_runtime_libs() {
     kylin_ensure_loader_executable "$compat_dir" "$ld_linux"
     [[ "$missing" -eq 1 ]] || break
   done
+
+  kylin_copy_font_and_webkit_libs "$app_dir"
+  kylin_patch_webkit_rpath "$app_dir"
 }
 
 kylin_patch_elfs() {
@@ -438,6 +575,8 @@ kylin_verify_bundle() {
   else
     echo "bundled loader 依赖检查通过。"
   fi
+
+  kylin_verify_freetype_for_webkit "$app_dir" || return 1
 
   return 0
 }

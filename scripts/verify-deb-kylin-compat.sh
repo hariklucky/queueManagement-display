@@ -50,7 +50,17 @@ if [[ ! -x "$loader" ]]; then
   echo "错误：bundled loader 缺少可执行权限" >&2
   exit 1
 fi
-echo "bundled loader 可执行权限正常。"
+if [[ -f "$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6" ]]; then
+  if nm -D "$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'; then
+    echo "deb 已内置含 FT_Get_Color_Glyph_Paint 的 libfreetype.so.6。"
+  else
+    echo "错误：deb 中 libfreetype.so.6 缺少 FT_Get_Color_Glyph_Paint" >&2
+    exit 1
+  fi
+else
+  echo "错误：deb 中缺少 usr/lib/libfreetype.so.6" >&2
+  exit 1
+fi
 
 if [[ -x "$WORKDIR/extract/usr/bin/"* ]] 2>/dev/null || find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | grep -q .; then
   launcher="$(find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | head -n 1)"

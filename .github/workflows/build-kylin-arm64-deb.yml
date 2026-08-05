@@ -28,7 +28,7 @@ jobs:
             libsoup-3.0-dev \
             libglib2.0-dev \
             patchelf libfuse2 \
-            dpkg-dev file
+            dpkg-dev file binutils
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

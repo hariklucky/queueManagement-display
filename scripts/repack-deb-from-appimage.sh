@@ -138,7 +138,8 @@ cat > "$PKG_ROOT/DEBIAN/postinst" <<EOF
 #!/bin/sh
 set -e
 chmod +x /opt/qms/AppRun /usr/bin/${PACKAGE_NAME} /usr/bin/${PACKAGE_NAME}-debug 2>/dev/null || true
-find /opt/qms/usr/bin -type f -perm -111 -exec chmod +x {} + 2>/dev/null || true
+find /opt/qms/usr/bin -type f -exec chmod +x {} + 2>/dev/null || true
+find /opt/qms/usr/lib/glibc-compat -type f -name 'ld-linux*' -exec chmod +x {} + 2>/dev/null || true
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database /usr/share/applications 2>/dev/null || true
 fi

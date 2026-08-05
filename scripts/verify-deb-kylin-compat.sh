@@ -35,6 +35,23 @@ else
   exit 1
 fi
 
+case "$(uname -m)" in
+  aarch64|arm64) ld_linux="ld-linux-aarch64.so.1" ;;
+  x86_64|amd64) ld_linux="ld-linux-x86-64.so.2" ;;
+  *) ld_linux="ld-linux-aarch64.so.1" ;;
+esac
+loader="$WORKDIR/extract/opt/qms/usr/lib/glibc-compat/$ld_linux"
+if [[ ! -f "$loader" ]]; then
+  echo "错误：deb 中缺少 bundled loader: opt/qms/usr/lib/glibc-compat/$ld_linux" >&2
+  exit 1
+fi
+chmod +x "$loader" 2>/dev/null || true
+if [[ ! -x "$loader" ]]; then
+  echo "错误：bundled loader 缺少可执行权限" >&2
+  exit 1
+fi
+echo "bundled loader 可执行权限正常。"
+
 if [[ -x "$WORKDIR/extract/usr/bin/"* ]] 2>/dev/null || find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | grep -q .; then
   launcher="$(find "$WORKDIR/extract/usr/bin" -maxdepth 1 -type f -executable | head -n 1)"
   if grep -q 'GDK_BACKEND=x11' "$launcher" && grep -q 'glibc-compat' "$launcher"; then

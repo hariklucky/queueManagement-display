@@ -24,8 +24,19 @@ export class ReadIdCardCancelledError extends Error {
   }
 }
 
+export class ReadIdCardTimeoutError extends Error {
+  constructor() {
+    super('读取身份证超时')
+    this.name = 'ReadIdCardTimeoutError'
+  }
+}
+
 export function isReadIdCardCancelled(error: unknown) {
   return error instanceof ReadIdCardCancelledError
+}
+
+export function isReadIdCardTimeout(error: unknown) {
+  return error instanceof ReadIdCardTimeoutError
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -90,7 +101,7 @@ function normalizeReadIdCardError(error: unknown, signal?: AbortSignal) {
   }
 
   if (error instanceof DOMException && error.name === 'TimeoutError') {
-    return new Error('读取身份证超时，请重新点击按钮后再放置身份证')
+    return new ReadIdCardTimeoutError()
   }
 
   return error

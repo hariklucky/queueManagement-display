@@ -19,6 +19,7 @@ import type {
 } from "../api/queue.types";
 import {
   isReadIdCardCancelled,
+  isReadIdCardTimeout,
   readIdCard,
 } from "../utils/idCardReader";
 import type { IdCardInfo } from "../utils/idCardReader.types";
@@ -88,6 +89,7 @@ const businessTypeInputRef = ref<HTMLInputElement | null>(null);
 const businessTypeDropdownOpen = ref(false);
 const scanWalkinLoading = ref(false);
 const walkinIdCardModalVisible = ref(false);
+const walkinIdCardReadTimedOut = ref(false);
 const submitLoading = ref(false);
 const phoneLookupLoading = ref(false);
 const walkinSubmitRef = ref<HTMLButtonElement | null>(null);
@@ -107,6 +109,7 @@ function abortWalkinIdCardReadInFlight() {
 function cancelWalkinIdCardRead() {
   abortWalkinIdCardReadInFlight()
   scanWalkinLoading.value = false
+  walkinIdCardReadTimedOut.value = false
   walkinIdCardModalVisible.value = false
 }
 
@@ -538,25 +541,11 @@ async function waitForIdCardModalPaint() {
   })
 }
 
-async function handleScanIdWalkin() {
-  if (scanWalkinLoading.value) return
-
-  abortWalkinIdCardReadInFlight()
-  closeOnScreenKeyboard()
-  activeInputElement.value?.blur()
-
-  walkinIdCardModalVisible.value = true
+async function performWalkinIdCardRead() {
   scanWalkinLoading.value = true
+  walkinIdCardReadTimedOut.value = false
   walkinIdCardAbort = new AbortController()
   const readSignal = walkinIdCardAbort.signal
-
-  await waitForIdCardModalPaint()
-
-  if (readSignal.aborted) {
-    scanWalkinLoading.value = false
-    walkinIdCardAbort = null
-    return
-  }
 
   try {
     const idCardInfo = await readIdCard({
@@ -581,6 +570,11 @@ async function handleScanIdWalkin() {
       return
     }
 
+    if (isReadIdCardTimeout(error)) {
+      walkinIdCardReadTimedOut.value = true
+      return
+    }
+
     walkinIdCardModalVisible.value = false
     alert(
       getApiErrorMessage(error as Error, '读取身份证失败，请重新放置身份证')
@@ -589,6 +583,27 @@ async function handleScanIdWalkin() {
     scanWalkinLoading.value = false
     walkinIdCardAbort = null
   }
+}
+
+async function handleScanIdWalkin() {
+  if (scanWalkinLoading.value) return
+
+  abortWalkinIdCardReadInFlight()
+  closeOnScreenKeyboard()
+  activeInputElement.value?.blur()
+
+  walkinIdCardModalVisible.value = true
+  walkinIdCardReadTimedOut.value = false
+
+  await waitForIdCardModalPaint()
+  await performWalkinIdCardRead()
+}
+
+async function retryWalkinIdCardRead() {
+  if (scanWalkinLoading.value) return
+
+  abortWalkinIdCardReadInFlight()
+  await performWalkinIdCardRead()
 }
 
 function resolveWalkinBusinessType() {
@@ -1074,9 +1089,30 @@ async function handleWalkinSubmit() {
             请您刷取身份证
           </h3>
           <p class="mb-6 text-gray-600">
-            请将身份证放置在读卡器感应区，系统将自动读取身份证信息
+            {{
+              walkinIdCardModalVisible && walkinIdCardReadTimedOut
+                ? "10 秒内未读取到身份证信息"
+                : "请将身份证放置在读卡器感应区，系统将自动读取身份证信息"
+            }}
           </p>
-          <div class="mb-8 flex items-center justify-center text-primary">
+          <div
+            v-if="walkinIdCardModalVisible && walkinIdCardReadTimedOut"
+            class="mb-8"
+          >
+            <button
+              class="w-full rounded-xl border-2 border-primary bg-primary/5 py-3 font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-70"
+              type="button"
+              :disabled="scanWalkinLoading"
+              @click="retryWalkinIdCardRead"
+            >
+              <i class="fas fa-id-card mr-2"></i>
+              请重新刷身份证自动获取
+            </button>
+          </div>
+          <div
+            v-else
+            class="mb-8 flex items-center justify-center text-primary"
+          >
             <i class="fas fa-spinner fa-spin mr-2 text-xl"></i>
             <span class="font-medium">正在等待读卡...</span>
           </div>

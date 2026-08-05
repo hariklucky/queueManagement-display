@@ -86,6 +86,13 @@ kylin_ensure_bin_executable() {
   [[ -x "$app_dir/AppRun" ]] || chmod +x "$app_dir/AppRun" 2>/dev/null || true
 }
 
+kylin_ensure_loader_executable() {
+  local compat_dir="$1"
+  local ld_linux="$2"
+  local loader="$compat_dir/$ld_linux"
+  [[ -f "$loader" ]] && chmod +x "$loader" 2>/dev/null || true
+}
+
 kylin_write_launcher() {
   local output="$1"
   local app_root="$2"
@@ -104,6 +111,7 @@ LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export PATH="\$APP_ROOT/usr/bin:\${PATH:-/usr/bin:/bin}"
 export LD_LIBRARY_PATH="\$LIBPATH\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="\$APP_ROOT/usr/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
@@ -115,24 +123,47 @@ LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
 LOG_FILE="\$LOG_DIR/launch.log"
 
-if [ ! -x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
+kylin_notify_failure() {
+  msg="\$1"
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "报到取号" "\$msg" 2>/dev/null || true
+  fi
+}
+
+kylin_run_app() {
+  "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
+    --library-path "\$LIBPATH" \\
+    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+}
+
+if [ ! -f "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
   echo "错误：缺少 bundled loader: \$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" >&2
+  kylin_notify_failure "缺少运行时 loader，请重新安装 deb 包"
   exit 127
 fi
+chmod +x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" 2>/dev/null || true
 if [ ! -f "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
   echo "错误：缺少主程序: \$APP_ROOT/usr/bin/\$MAIN_BIN" >&2
+  kylin_notify_failure "缺少主程序，请重新安装 deb 包"
   exit 127
 fi
 chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 
 if [ -t 2 ]; then
-  exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-    --library-path "\$LIBPATH" \\
-    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+  exec kylin_run_app "\$@"
 else
-  exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-    --library-path "\$LIBPATH" \\
-    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@" 2>>"\$LOG_FILE"
+  {
+    echo "=== \$(date '+%Y-%m-%d %H:%M:%S') 启动 ==="
+    echo "DISPLAY=\$DISPLAY APP_ROOT=\$APP_ROOT MAIN_BIN=\$MAIN_BIN"
+    if kylin_run_app "\$@"; then
+      echo "=== 正常退出 ==="
+    else
+      code=\$?
+      echo "=== 启动失败，退出码: \$code ==="
+      kylin_notify_failure "启动失败(退出码 \$code)，详见 \$LOG_FILE"
+      exit "\$code"
+    fi
+  } >>"\$LOG_FILE" 2>&1
 fi
 EOF
   else
@@ -145,6 +176,7 @@ LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export PATH="\$APP_ROOT/usr/bin:\${PATH:-/usr/bin:/bin}"
 export LD_LIBRARY_PATH="\$LIBPATH\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="\$APP_ROOT/usr/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
@@ -156,24 +188,47 @@ LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
 LOG_FILE="\$LOG_DIR/launch.log"
 
-if [ ! -x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
+kylin_notify_failure() {
+  msg="\$1"
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "报到取号" "\$msg" 2>/dev/null || true
+  fi
+}
+
+kylin_run_app() {
+  "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
+    --library-path "\$LIBPATH" \\
+    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+}
+
+if [ ! -f "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
   echo "错误：缺少 bundled loader: \$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" >&2
+  kylin_notify_failure "缺少运行时 loader，请重新安装 deb 包"
   exit 127
 fi
+chmod +x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" 2>/dev/null || true
 if [ ! -f "\$APP_ROOT/usr/bin/\$MAIN_BIN" ]; then
   echo "错误：缺少主程序: \$APP_ROOT/usr/bin/\$MAIN_BIN" >&2
+  kylin_notify_failure "缺少主程序，请重新安装 deb 包"
   exit 127
 fi
 chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 
 if [ -t 2 ]; then
-  exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-    --library-path "\$LIBPATH" \\
-    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+  exec kylin_run_app "\$@"
 else
-  exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-    --library-path "\$LIBPATH" \\
-    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@" 2>>"\$LOG_FILE"
+  {
+    echo "=== \$(date '+%Y-%m-%d %H:%M:%S') 启动 ==="
+    echo "DISPLAY=\$DISPLAY APP_ROOT=\$APP_ROOT MAIN_BIN=\$MAIN_BIN"
+    if kylin_run_app "\$@"; then
+      echo "=== 正常退出 ==="
+    else
+      code=\$?
+      echo "=== 启动失败，退出码: \$code ==="
+      kylin_notify_failure "启动失败(退出码 \$code)，详见 \$LOG_FILE"
+      exit "\$code"
+    fi
+  } >>"\$LOG_FILE" 2>&1
 fi
 EOF
   fi
@@ -193,6 +248,7 @@ MAIN_BIN="$main_bin"
 LD_LINUX="$ld_linux"
 LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export LD_LIBRARY_PATH="\$LIBPATH"
+export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
@@ -257,7 +313,9 @@ kylin_copy_runtime_libs() {
     libgcc_s.so.1 \
     libstdc++.so.6; do
     copy_lib "$glib_dir/$lib"
+    copy_lib "/usr${glib_dir}/$lib"
   done
+  kylin_ensure_loader_executable "$compat_dir" "$ld_linux"
 
   [[ -n "$app_dir" ]] || return 0
 
@@ -270,8 +328,19 @@ kylin_copy_runtime_libs() {
     targets+=("$target")
   done < <(find "$app_dir/usr/bin" "$app_dir/usr/lib" -type f \( -perm -111 -o -name '*.so*' \) -print0 2>/dev/null)
 
-  local pass missing lib_name lib_path dest_dir
-  for pass in 1 2 3 4; do
+  kylin_is_glibc_runtime_lib() {
+    case "$1" in
+      libnss_*|"$ld_linux"|libc.so.6|libm.so.6|libpthread.so.0|libdl.so.2|librt.so.1|libresolv.so.2|libutil.so.1|libgcc_s.so.1|libstdc++.so.6)
+        return 0
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  }
+
+  local pass missing lib_name lib_path lib_basename
+  for pass in 1 2 3 4 5 6; do
     missing=0
     for target in "${targets[@]}"; do
       [[ -f "$target" ]] || continue
@@ -281,7 +350,7 @@ kylin_copy_runtime_libs() {
           lib_name="${lib_name##*[[:space:]]}"
           lib_path="$(kylin_find_lib_on_system "$lib_name" || true)"
           if [[ -n "$lib_path" ]]; then
-            if [[ "$lib_name" == libnss_* || "$lib_name" == "$ld_linux" || "$lib_name" == libc.so.6 || "$lib_name" == libm.so.6 || "$lib_name" == libpthread.so.0 || "$lib_name" == libdl.so.2 || "$lib_name" == libgcc_s.so.1 || "$lib_name" == libstdc++.so.6 ]]; then
+            if kylin_is_glibc_runtime_lib "$lib_name"; then
               copy_lib "$lib_path" "$compat_dir"
             else
               copy_lib "$lib_path" "$app_dir/usr/lib"
@@ -293,12 +362,19 @@ kylin_copy_runtime_libs() {
         elif [[ "$line" == *" => "* ]]; then
           lib_path="${line#* => }"
           lib_path="${lib_path%%[[:space:]]*}"
-          if [[ "$lib_path" == "$glib_dir/"* ]]; then
+          [[ "$lib_path" == "$app_dir/"* ]] && continue
+          lib_basename="$(basename "$lib_path")"
+          if kylin_is_glibc_runtime_lib "$lib_basename"; then
             copy_lib "$lib_path" "$compat_dir"
+            missing=1
+          elif [[ -f "$lib_path" && ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
+            copy_lib "$lib_path" "$app_dir/usr/lib"
+            missing=1
           fi
         fi
       done < <("$loader" --library-path "$libpath" ldd "$target" 2>/dev/null || true)
     done
+    kylin_ensure_loader_executable "$compat_dir" "$ld_linux"
     [[ "$missing" -eq 1 ]] || break
   done
 }

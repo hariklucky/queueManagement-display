@@ -41,6 +41,7 @@ jobs:
         env:
           KYLIN_DEB_FROM_APPIMAGE: "1"
           KYLIN_APPIMAGE_GLIBC_COMPAT: "1"
+          KYLIN_VERIFY_STRICT: "1"
         run: npm run tauri:build:kylin:deb:arm64
 
       - name: Verify deb Kylin compatibility

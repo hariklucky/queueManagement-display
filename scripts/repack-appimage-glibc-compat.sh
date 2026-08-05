@@ -62,6 +62,11 @@ fi
 MAIN_BIN="$(kylin_detect_main_bin "$ROOT")"
 kylin_ensure_bin_executable "$ROOT" "$MAIN_BIN"
 echo "主程序: usr/bin/$MAIN_BIN"
+
+echo "=== 确保 WebKit 所需 FreeType 已内置 ==="
+kylin_ensure_freetype_for_webkit "$ROOT"
+kylin_patch_webkit_rpath "$ROOT"
+
 echo "=== 修补 ELF RPATH / interpreter ==="
 kylin_patch_elfs "$ROOT" "$COMPAT_DIR" "$LD_LINUX" "\$ORIGIN/../lib/glibc-compat/$LD_LINUX"
 

@@ -301,6 +301,12 @@ kylin_find_lib_on_system() {
       return 0
     fi
   fi
+  # 兜底：部分 CI 环境 ldconfig 缓存未刷新
+  path="$(find /usr/lib /lib -name "$lib_name" 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$path" && -f "$path" ]]; then
+    printf '%s' "$path"
+    return 0
+  fi
   return 1
 }
 

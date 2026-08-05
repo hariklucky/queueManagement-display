@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends --no-install-tr
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends --no-install-triggers \
-    libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+    libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libfreetype6 libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends --no-install-triggers \

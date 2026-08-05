@@ -25,9 +25,10 @@ kylin_glib_dir() {
 }
 
 kylin_lib_search_dirs() {
+  local arch="${1:-$(uname -m)}"
   local arch_dir
-  arch_dir="$(kylin_glib_dir "$1")"
-  printf '%s\n' "$arch_dir" "/usr${arch_dir}" "/lib" "/usr/lib"
+  arch_dir="$(kylin_glib_dir "$arch")"
+  printf '%s\n' "$arch_dir" "/usr${arch_dir}" "/lib" "/usr/lib" "/lib/${arch}" "/usr/lib/${arch}"
 }
 
 kylin_detect_main_bin() {
@@ -289,11 +290,35 @@ EOF
 
 kylin_find_lib_on_system() {
   local lib_name="$1"
-  local dir
+  local dir path
   while IFS= read -r dir; do
     [[ -f "$dir/$lib_name" ]] && { printf '%s' "$dir/$lib_name"; return 0; }
-  done < <(kylin_lib_search_dirs)
+  done < <(kylin_lib_search_dirs "${2:-}")
+  if command -v ldconfig >/dev/null 2>&1; then
+    path="$(ldconfig -p 2>/dev/null | awk -v name="$lib_name" '$1 == name { print $NF; exit }')"
+    if [[ -n "$path" && -f "$path" ]]; then
+      printf '%s' "$path"
+      return 0
+    fi
+  fi
   return 1
+}
+
+kylin_find_lib_in_app() {
+  local lib_name="$1"
+  local app_dir="$2"
+  local candidate
+  for candidate in \
+    "$app_dir/usr/lib/$lib_name" \
+    "$app_dir/usr/lib/$(uname -m)-linux-gnu/$lib_name"; do
+    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+kylin_freetype_has_webkit_symbol() {
+  local freetype="$1"
+  [[ -f "$freetype" ]] && nm -D "$freetype" 2>/dev/null | grep -q 'FT_Get_Color_Glyph_Paint'
 }
 
 # WebKit 4.1 依赖 FreeType >= 2.10.4（FT_Get_Color_Glyph_Paint），麒麟系统自带版本过旧，必须内置构建机库。
@@ -338,7 +363,11 @@ kylin_copy_named_lib_to_app() {
   local lib_name="$1"
   local app_dir="$2"
   local lib_path
+
   lib_path="$(kylin_find_lib_on_system "$lib_name" || true)"
+  if [[ -z "$lib_path" ]]; then
+    lib_path="$(kylin_find_lib_in_app "$lib_name" "$app_dir" || true)"
+  fi
   if [[ -n "$lib_path" ]]; then
     kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
     return 0
@@ -346,21 +375,54 @@ kylin_copy_named_lib_to_app() {
   return 1
 }
 
+kylin_ensure_freetype_for_webkit() {
+  local app_dir="$1"
+  local dest="$app_dir/usr/lib/libfreetype.so.6"
+  local lib_path
+
+  if kylin_freetype_has_webkit_symbol "$dest"; then
+    echo "  libfreetype.so.6 已满足 WebKit 要求（含 FT_Get_Color_Glyph_Paint）"
+    return 0
+  fi
+
+  lib_path="$(kylin_find_lib_on_system libfreetype.so.6 || true)"
+  if [[ -z "$lib_path" ]]; then
+    echo "错误：构建机未找到 libfreetype.so.6，请安装 libfreetype6" >&2
+    return 1
+  fi
+
+  echo "  覆盖内置 libfreetype.so.6 <- $lib_path"
+  kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+
+  if ! kylin_freetype_has_webkit_symbol "$dest"; then
+    echo "错误：libfreetype.so.6 仍缺少 FT_Get_Color_Glyph_Paint" >&2
+    return 1
+  fi
+  return 0
+}
+
 kylin_copy_font_and_webkit_libs() {
   local app_dir="$1"
   local lib_name
 
   echo "=== 内置 WebKit / FreeType 字体栈（避免麒麟系统旧版 libfreetype）==="
+
+  if ! kylin_ensure_freetype_for_webkit "$app_dir"; then
+    return 1
+  fi
+
   while IFS= read -r lib_name; do
     [[ -n "$lib_name" ]] || continue
-    if kylin_copy_named_lib_to_app "$lib_name" "$app_dir"; then
-      echo "  已内置: $lib_name"
+    [[ "$lib_name" == "libfreetype.so.6" ]] && continue
+    if [[ -f "$app_dir/usr/lib/$lib_name" ]]; then
+      echo "  已存在: $lib_name"
+    elif kylin_copy_named_lib_to_app "$lib_name" "$app_dir"; then
+      echo "  已补全: $lib_name"
     else
-      echo "  跳过（构建机未找到）: $lib_name"
+      echo "  可选库未找到（AppImage 可能已打包）: $lib_name"
     fi
   done < <(kylin_explicit_app_libs)
 
-  # 按实际 SONAME 再补一轮（如 libicuuc.so.72）
   local icu_lib
   for icu_lib in /usr/lib/*/libicuuc.so.* /lib/*/libicuuc.so.*; do
     [[ -f "$icu_lib" ]] || continue
@@ -500,7 +562,7 @@ kylin_copy_runtime_libs() {
             if [[ ! -f "$app_dir/usr/lib/$lib_basename" ]]; then
               copy_lib "$lib_path" "$app_dir/usr/lib" 1
               missing=1
-            elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz*.so.* ]]; then
+            elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* ]]; then
               copy_lib "$lib_path" "$app_dir/usr/lib" 1
               missing=1
             fi
@@ -512,7 +574,7 @@ kylin_copy_runtime_libs() {
     [[ "$missing" -eq 1 ]] || break
   done
 
-  kylin_copy_font_and_webkit_libs "$app_dir"
+  kylin_copy_font_and_webkit_libs "$app_dir" || return 1
   kylin_patch_webkit_rpath "$app_dir"
 }
 

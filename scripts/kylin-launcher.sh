@@ -263,11 +263,11 @@ echo "MAIN_BIN=\$MAIN_BIN"
 echo "LIBPATH=\$LIBPATH"
 echo
 echo "=== 主程序依赖 ==="
-LD_LIBRARY_PATH="$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
+LD_LIBRARY_PATH="\$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 echo
 echo "=== WebKit / FreeType ==="
 if [ -f "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" ]; then
-  LD_LIBRARY_PATH="$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" 2>/dev/null | grep -E 'freetype|fontconfig|harfbuzz|not found' || true
+  LD_LIBRARY_PATH="\$LIBPATH" /usr/bin/ldd "\$APP_ROOT/usr/lib/libwebkit2gtk-4.1.so.0" 2>/dev/null | grep -E 'freetype|fontconfig|harfbuzz|not found' || true
 else
   echo "未找到 libwebkit2gtk-4.1.so.0"
 fi

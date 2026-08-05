@@ -110,18 +110,25 @@ MAIN_BIN="$main_bin"
 LD_LINUX="$ld_linux"
 LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export PATH="\$APP_ROOT/usr/bin:\${PATH:-/usr/bin:/bin}"
-export LD_LIBRARY_PATH="\$LIBPATH\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="\$LIBPATH"
 export XDG_DATA_DIRS="\$APP_ROOT/usr/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
+export GTK_MODULES=""
+export GTK_IM_MODULE=""
+export NO_AT_BRIDGE=1
+export GSK_RENDERER=cairo
+export GDK_RENDERING=image
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_ACCELERATED_2D_CANVAS=1
 export GSETTINGS_BACKEND=memory
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
+unset LD_PRELOAD
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
 LOG_FILE="\$LOG_DIR/launch.log"
@@ -177,18 +184,25 @@ MAIN_BIN="$main_bin"
 LD_LINUX="$ld_linux"
 LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export PATH="\$APP_ROOT/usr/bin:\${PATH:-/usr/bin:/bin}"
-export LD_LIBRARY_PATH="\$LIBPATH\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="\$LIBPATH"
 export XDG_DATA_DIRS="\$APP_ROOT/usr/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
+export GTK_MODULES=""
+export GTK_IM_MODULE=""
+export NO_AT_BRIDGE=1
+export GSK_RENDERER=cairo
+export GDK_RENDERING=image
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_ACCELERATED_2D_CANVAS=1
 export GSETTINGS_BACKEND=memory
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
+unset LD_PRELOAD
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/qms"
 mkdir -p "\$LOG_DIR" 2>/dev/null || true
 LOG_FILE="\$LOG_DIR/launch.log"
@@ -256,12 +270,27 @@ export LD_LIBRARY_PATH="\$LIBPATH"
 export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
+export GTK_MODULES=""
+export GTK_IM_MODULE=""
+export NO_AT_BRIDGE=1
+export GSK_RENDERER=cairo
+export GDK_RENDERING=image
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_ACCELERATED_2D_CANVAS=1
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
+unset LD_PRELOAD
+
+kylin_sym_ok() {
+  _lib="\$1"
+  _sym="\$2"
+  readelf -Ws "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
+  strings "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
+  return 1
+}
 
 echo "=== QMS 启动诊断 ==="
 echo "APP_ROOT=\$APP_ROOT"
@@ -269,7 +298,7 @@ echo "MAIN_BIN=\$MAIN_BIN"
 echo "LIBPATH=\$LIBPATH"
 echo
 echo "=== 内置 WebKit 运行时库 ==="
-for lib in libfreetype.so.6 libgbm.so.1 libdrm.so.2 libwebkit2gtk-4.1.so.0; do
+for lib in libfreetype.so.6 libgbm.so.1 libdrm.so.2 libwebkit2gtk-4.1.so.0 libgtk-3.so.0 libglib-2.0.so.0; do
   if [ -f "\$APP_ROOT/usr/lib/\$lib" ]; then
     echo "  已内置: \$lib"
   else
@@ -279,7 +308,7 @@ done
 echo
 echo "=== FreeType / GBM 符号 ==="
 if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
-  if objdump -T "\$APP_ROOT/usr/lib/libfreetype.so.6" 2>/dev/null | grep -Fq FT_Get_Color_Glyph_Paint; then
+  if kylin_sym_ok "\$APP_ROOT/usr/lib/libfreetype.so.6" FT_Get_Color_Glyph_Paint; then
     echo "libfreetype 包含 FT_Get_Color_Glyph_Paint"
   else
     echo "警告：libfreetype 缺少 FT_Get_Color_Glyph_Paint"
@@ -288,7 +317,7 @@ else
   echo "警告：未 bundled libfreetype.so.6"
 fi
 if [ -f "\$APP_ROOT/usr/lib/libgbm.so.1" ]; then
-  if objdump -T "\$APP_ROOT/usr/lib/libgbm.so.1" 2>/dev/null | grep -Fq gbm_bo_create_with_modifiers2; then
+  if kylin_sym_ok "\$APP_ROOT/usr/lib/libgbm.so.1" gbm_bo_create_with_modifiers2; then
     echo "libgbm 包含 gbm_bo_create_with_modifiers2"
   else
     echo "警告：libgbm 缺少 gbm_bo_create_with_modifiers2"
@@ -497,6 +526,11 @@ libsqlite3.so.0
 libepoxy.so.0
 libgbm.so.1
 libdrm.so.2
+libgtk-3.so.0
+libgdk-3.so.0
+libglib-2.0.so.0
+libgobject-2.0.so.0
+libgio-2.0.so.0
 libjavascriptcoregtk-4.1.so.0
 libwebkit2gtk-4.1.so.0
 libsoup-3.0.so.0
@@ -612,6 +646,24 @@ kylin_ensure_gbm_for_webkit() {
   return 1
 }
 
+kylin_ensure_gtk_glib_bundled() {
+  local app_dir="$1"
+  local lib_name
+
+  echo "=== 补全 GTK / GLib 栈（避免加载麒麟系统 GTK 模块）==="
+  for lib_name in \
+    libgtk-3.so.0 libgdk-3.so.0 libglib-2.0.so.0 libgobject-2.0.so.0 libgio-2.0.so.0 \
+    libgmodule-2.0.so.0 libpango-1.0.so.0 libpangocairo-1.0.so.0 libcairo.so.2 \
+    libpangoft2-1.0.so.0 libatk-1.0.so.0 libatk-bridge-2.0.so.0; do
+    if [[ -f "$app_dir/usr/lib/$lib_name" ]]; then
+      continue
+    fi
+    if kylin_copy_named_lib_to_app "$lib_name" "$app_dir"; then
+      echo "  已补全: $lib_name"
+    fi
+  done
+}
+
 kylin_copy_font_and_webkit_libs() {
   local app_dir="$1"
   local lib_name
@@ -624,6 +676,7 @@ kylin_copy_font_and_webkit_libs() {
   if ! kylin_ensure_gbm_for_webkit "$app_dir"; then
     return 1
   fi
+  kylin_ensure_gtk_glib_bundled "$app_dir"
 
   while IFS= read -r lib_name; do
     [[ -n "$lib_name" ]] || continue
@@ -655,7 +708,7 @@ kylin_patch_webkit_rpath() {
   while IFS= read -r -d '' lib; do
     file "$lib" 2>/dev/null | grep -q 'ELF .* shared object' || continue
     patchelf --set-rpath "$rpath" "$lib" 2>/dev/null || true
-  done < <(find "$app_dir/usr/lib" -maxdepth 1 -type f \( -name 'libwebkit*.so.*' -o -name 'libjavascriptcore*.so.*' -o -name 'libfreetype.so.*' -o -name 'libfontconfig.so.*' -o -name 'libharfbuzz*.so.*' -o -name 'libsoup-3.0.so.*' -o -name 'libgbm.so.*' -o -name 'libdrm.so.*' \) -print0 2>/dev/null)
+  done < <(find "$app_dir/usr/lib" -maxdepth 1 -type f \( -name 'libwebkit*.so.*' -o -name 'libjavascriptcore*.so.*' -o -name 'libfreetype.so.*' -o -name 'libfontconfig.so.*' -o -name 'libharfbuzz*.so.*' -o -name 'libsoup-3.0.so.*' -o -name 'libgbm.so.*' -o -name 'libdrm.so.*' -o -name 'libgtk-3.so.*' -o -name 'libgdk-3.so.*' -o -name 'libglib-2.0.so.*' -o -name 'libgobject-2.0.so.*' -o -name 'libgio-2.0.so.*' \) -print0 2>/dev/null)
 }
 
 kylin_verify_gbm_for_webkit() {
@@ -793,7 +846,7 @@ kylin_copy_runtime_libs() {
           if kylin_is_glibc_runtime_lib "$lib_basename"; then
             copy_lib "$lib_path" "$compat_dir"
             missing=1
-          elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* || "$lib_basename" == libgbm.so.* || "$lib_basename" == libdrm.so.* ]]; then
+          elif [[ "$lib_basename" == libfreetype.so.* || "$lib_basename" == libfontconfig.so.* || "$lib_basename" == libharfbuzz.so.* || "$lib_basename" == libharfbuzz-icu.so.* || "$lib_basename" == libharfbuzz-subset.so.* || "$lib_basename" == libgbm.so.* || "$lib_basename" == libdrm.so.* || "$lib_basename" == libgtk-3.so.* || "$lib_basename" == libgdk-3.so.* || "$lib_basename" == libglib-2.0.so.* || "$lib_basename" == libgobject-2.0.so.* || "$lib_basename" == libgio-2.0.so.* ]]; then
             :
             # 不通过 ldd 回拷旧版字体/GBM 库，由 ensure 步骤统一处理
           elif [[ -f "$lib_path" && ! -f "$app_dir/usr/lib/$lib_basename" ]]; then

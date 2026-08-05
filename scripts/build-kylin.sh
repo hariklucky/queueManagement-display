@@ -259,6 +259,10 @@ if [[ "$BUNDLES" == "deb" && "$KYLIN_DEB_FROM_APPIMAGE" == "1" ]]; then
 fi
 
 echo "开始打包麒麟环境安装包（arch: ${KYLIN_ARCH}, bundles: ${BUNDLES}）..."
+if [[ "$KYLIN_ARCH" == "arm64" ]]; then
+  export RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=generic"
+  echo "ARM64 构建使用 RUSTFLAGS:${RUSTFLAGS}"
+fi
 npm run tauri -- build --bundles "$TAURI_BUNDLES" "${TARGET_ARGS[@]}" "${EXTRA_ARGS[@]}"
 
 appimage_file="$(find "$ROOT_DIR/$BUNDLE_DIR" -name "*.AppImage" -type f | head -n 1 || true)"

@@ -141,9 +141,7 @@ kylin_notify_failure() {
 }
 
 kylin_run_app() {
-  "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-    --library-path "\$LIBPATH" \\
-    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+  exec "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
 }
 
 if [ ! -f "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
@@ -160,12 +158,13 @@ fi
 chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 
 if [ -t 2 ]; then
-  exec kylin_run_app "\$@"
+  kylin_run_app "\$@"
 else
   {
     echo "=== \$(date '+%Y-%m-%d %H:%M:%S') 启动 ==="
     echo "DISPLAY=\$DISPLAY APP_ROOT=\$APP_ROOT MAIN_BIN=\$MAIN_BIN"
-    if kylin_run_app "\$@"; then
+    echo "INTERP=\$(readelf -l "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null | grep 'Requesting program interpreter' || true)"
+    if "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"; then
       echo "=== 正常退出 ==="
     else
       code=\$?
@@ -215,9 +214,7 @@ kylin_notify_failure() {
 }
 
 kylin_run_app() {
-  "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-    --library-path "\$LIBPATH" \\
-    "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+  exec "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
 }
 
 if [ ! -f "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
@@ -234,12 +231,13 @@ fi
 chmod +x "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null || true
 
 if [ -t 2 ]; then
-  exec kylin_run_app "\$@"
+  kylin_run_app "\$@"
 else
   {
     echo "=== \$(date '+%Y-%m-%d %H:%M:%S') 启动 ==="
     echo "DISPLAY=\$DISPLAY APP_ROOT=\$APP_ROOT MAIN_BIN=\$MAIN_BIN"
-    if kylin_run_app "\$@"; then
+    echo "INTERP=\$(readelf -l "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null | grep 'Requesting program interpreter' || true)"
+    if "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"; then
       echo "=== 正常退出 ==="
     else
       code=\$?
@@ -287,7 +285,6 @@ unset LD_PRELOAD
 kylin_sym_ok() {
   _lib="\$1"
   _sym="\$2"
-  readelf -Ws "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
   strings "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
   return 1
 }
@@ -327,9 +324,7 @@ else
 fi
 echo
 echo "=== 尝试启动 ==="
-exec "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" \\
-  --library-path "\$LIBPATH" \\
-  "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
+exec "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
 EOF
   chmod 755 "$output"
 }
@@ -633,7 +628,8 @@ kylin_ensure_gbm_for_webkit() {
     fi
   fi
 
-  echo "  系统 GBM 版本过旧，下载 Ubuntu 24.04 libgbm1 + libdrm2..."
+  echo "  系统 GBM 版本过旧，尝试下载 Ubuntu 24.04 libgbm1 + libdrm2..."
+  echo "  警告：Noble GBM 可能在部分麒麟 CPU 上不兼容，优先使用构建机 libgbm" >&2
   if kylin_fetch_noble_gbm_stack "$app_dir/usr/lib"; then
     kylin_bundle_single_lib_deps "$dest" "$app_dir"
     if kylin_gbm_has_webkit_symbol "$dest"; then

@@ -78,6 +78,7 @@ const appointmentPhone = ref("");
 const appointmentTakeLoading = ref(false);
 const scanIdLoading = ref(false);
 const appointmentIdCardModalVisible = ref(false);
+const appointmentIdCardReadTimedOut = ref(false);
 const queryLoading = ref(false);
 
 const username = ref("");
@@ -125,6 +126,7 @@ function abortAppointmentIdCardReadInFlight() {
 function cancelAppointmentIdCardRead() {
   abortAppointmentIdCardReadInFlight()
   scanIdLoading.value = false
+  appointmentIdCardReadTimedOut.value = false
   appointmentIdCardModalVisible.value = false
 }
 
@@ -453,6 +455,46 @@ function goBackAppointmentQuery() {
   currentPage.value = "appointment";
 }
 
+async function performAppointmentIdCardRead() {
+  scanIdLoading.value = true
+  appointmentIdCardReadTimedOut.value = false
+  appointmentIdCardAbort = new AbortController()
+  const readSignal = appointmentIdCardAbort.signal
+
+  try {
+    const idCardInfo = await readIdCard({
+      signal: readSignal,
+      timeoutMs: 10_000,
+    })
+
+    appointmentIdCardModalVisible.value = false
+
+    const res = await getAppointmentTicketByIdCard(idCardInfo)
+    await handleAppointmentQueryResult(
+      res,
+      "未查询到您的预约信息，请进行现场取号"
+    )
+  } catch (error) {
+    if (isReadIdCardCancelled(error)) {
+      return
+    }
+
+    if (isReadIdCardTimeout(error)) {
+      appointmentIdCardReadTimedOut.value = true
+      return
+    }
+
+    appointmentIdCardModalVisible.value = false
+
+    showErrorResult(
+      getApiErrorMessage(error as Error, "读取身份证或查询预约失败，请重试")
+    )
+  } finally {
+    scanIdLoading.value = false
+    appointmentIdCardAbort = null
+  }
+}
+
 async function handleScanId() {
   if (scanIdLoading.value) return
 
@@ -461,45 +503,17 @@ async function handleScanId() {
   activeInputElement.value?.blur()
 
   appointmentIdCardModalVisible.value = true
-  scanIdLoading.value = true
-  appointmentIdCardAbort = new AbortController()
-  const readSignal = appointmentIdCardAbort.signal
+  appointmentIdCardReadTimedOut.value = false
 
   await waitForIdCardModalPaint()
+  await performAppointmentIdCardRead()
+}
 
-  if (readSignal.aborted) {
-    scanIdLoading.value = false
-    appointmentIdCardAbort = null
-    return
-  }
+async function retryAppointmentIdCardRead() {
+  if (scanIdLoading.value) return
 
-  try {
-    const idCardInfo = await readIdCard({
-      signal: readSignal,
-      timeoutMs: 10_000,
-    })
-
-    appointmentIdCardModalVisible.value = false;
-
-    const res = await getAppointmentTicketByIdCard(idCardInfo);
-    await handleAppointmentQueryResult(
-      res,
-      "未查询到您的预约信息，请进行现场取号"
-    );
-  } catch (error) {
-    if (isReadIdCardCancelled(error)) {
-      return;
-    }
-
-    appointmentIdCardModalVisible.value = false;
-
-    showErrorResult(
-      getApiErrorMessage(error as Error, "读取身份证或查询预约失败，请重试")
-    );
-  } finally {
-    scanIdLoading.value = false;
-    appointmentIdCardAbort = null;
-  }
+  abortAppointmentIdCardReadInFlight()
+  await performAppointmentIdCardRead()
 }
 
 async function handleQueryAppointment() {
@@ -1090,7 +1104,8 @@ async function handleWalkinSubmit() {
           </h3>
           <p class="mb-6 text-gray-600">
             {{
-              walkinIdCardModalVisible && walkinIdCardReadTimedOut
+              (walkinIdCardModalVisible && walkinIdCardReadTimedOut) ||
+              (appointmentIdCardModalVisible && appointmentIdCardReadTimedOut)
                 ? "10 秒内未读取到身份证信息"
                 : "请将身份证放置在读卡器感应区，系统将自动读取身份证信息"
             }}
@@ -1104,6 +1119,20 @@ async function handleWalkinSubmit() {
               type="button"
               :disabled="scanWalkinLoading"
               @click="retryWalkinIdCardRead"
+            >
+              <i class="fas fa-id-card mr-2"></i>
+              请重新刷身份证自动获取
+            </button>
+          </div>
+          <div
+            v-else-if="appointmentIdCardModalVisible && appointmentIdCardReadTimedOut"
+            class="mb-8"
+          >
+            <button
+              class="w-full rounded-xl border-2 border-primary bg-primary/5 py-3 font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-70"
+              type="button"
+              :disabled="scanIdLoading"
+              @click="retryAppointmentIdCardRead"
             >
               <i class="fas fa-id-card mr-2"></i>
               请重新刷身份证自动获取

@@ -10,19 +10,18 @@ const simpleKeyboardEsm = path.resolve(
   'node_modules/simple-keyboard/build/index.modern.esm.js'
 )
 
-const host = process.env.TAURI_DEV_HOST
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_TARGET || 'http://127.0.0.1:8080'
   const shouldRewrite = env.VITE_API_PROXY_REWRITE === 'true'
-  const enableDebug =
-    !!process.env.TAURI_ENV_DEBUG || env.VITE_APP_DEBUG === 'true'
+  const enableDebug = env.VITE_APP_DEBUG === 'true'
 
   return {
+    // Electron file:// 加载必需相对路径
+    base: './',
     plugins: [vue(), tailwindcss()],
     clearScreen: false,
-    envPrefix: ['VITE_', 'TAURI_ENV_*'],
+    envPrefix: ['VITE_'],
     optimizeDeps: {
       include: ['simple-keyboard', 'pinyin-match-hanzi'],
     },
@@ -37,17 +36,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
-      host: host || false,
-      hmr: host
-        ? {
-            protocol: 'ws',
-            host,
-            port: 1421,
-          }
-        : undefined,
-      watch: {
-        ignored: ['**/src-tauri/**'],
-      },
+      host: '127.0.0.1',
       proxy: {
         '/api': {
           target: apiTarget,
@@ -60,11 +49,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      // Vite 8 的 esbuild 降级无法处理 safari13 解构语法，需 >= safari14.1
-      target:
-        process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari14.1',
+      target: 'chrome120',
       minify: !enableDebug,
       sourcemap: enableDebug,
+      outDir: 'dist',
     },
   }
 })

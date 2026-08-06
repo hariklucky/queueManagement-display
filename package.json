@@ -1,8 +1,11 @@
 {
   "name": "qms",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "报到取号 - 营业厅现场终端桌面取号应用",
+  "author": "QMS",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --mode development",
     "build": "vite build --mode production",
@@ -11,42 +14,72 @@
     "build:test": "vite build --mode test",
     "preview": "vite preview",
     "preview:prod": "vite preview --mode production",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "tauri:bundle": "tauri bundle",
-    "tauri:bundle:msi": "tauri build",
-    "install:llvm-rc": "bash scripts/install-llvm-rc.sh",
-    "tauri:build:win": "bash scripts/build-win.sh",
-    "tauri:build:win:nobundle": "bash scripts/build-win.sh --no-bundle",
-    "tauri:build:kylin": "bash scripts/build-kylin.sh",
-    "tauri:build:kylin:deb": "bash scripts/build-kylin.sh --deb",
-    "tauri:build:kylin:deb:arm64": "bash scripts/build-kylin.sh --deb --arm64",
-    "tauri:build:kylin:appimage:arm64": "bash scripts/build-kylin.sh --appimage --arm64",
-    "tauri:build:kylin:deb:amd64": "bash scripts/build-kylin.sh --deb --amd64",
-    "tauri:build:kylin:rpm": "bash scripts/build-kylin.sh --rpm",
-    "tauri:build:kylin:all": "bash scripts/build-kylin.sh --all",
-    "tauri:build:kylin:nobundle": "bash scripts/build-kylin.sh --no-bundle",
-    "tauri:build:kylin:docker": "bash scripts/build-kylin-docker.sh",
-    "tauri:build:kylin:cn": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin.sh",
-    "tauri:build:kylin:deb:arm64:cn": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin.sh --deb --arm64",
-    "tauri:build:kylin:deb:arm64:cn:rebuild": "KYLIN_DOCKER_BASE_IMAGE=docker.m.daocloud.io/library/ubuntu:22.04 bash scripts/build-kylin-docker.sh --arm64 --rebuild-image"
+    "electron:dev": "concurrently -k \"vite --mode development\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "electron:build": "npm run build:prod && electron-builder",
+    "electron:build:linux:arm64": "npm run build:prod && electron-builder --linux deb --arm64",
+    "electron:build:linux:amd64": "npm run build:prod && electron-builder --linux deb --x64",
+    "electron:build:win": "npm run build:prod && electron-builder --win nsis --x64"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.1",
     "pinyin-match-hanzi": "^0.1.1",
     "simple-keyboard": "^3.8.93",
-    "tauri-plugin-device-info-api": "^1.0.1",
     "vue": "^3.5.34"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
-    "@tauri-apps/cli": "^2.11.3",
     "@vitejs/plugin-vue": "^6.0.6",
+    "concurrently": "^9.2.1",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "esbuild": "^0.28.1",
     "tailwindcss": "^4.3.1",
     "typescript": "^5.9.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.qms.desktop",
+    "productName": "报到取号",
+    "copyright": "Copyright © QMS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "config.example.json",
+        "to": "config.example.json"
+      }
+    ],
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Utility",
+      "synopsis": "报到取号",
+      "description": "面向营业厅现场终端的桌面取号应用，支持预约取号与现场取号，集成身份证读卡与小票打印能力。",
+      "executableName": "qms",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "depends": []
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "报到取号"
+    }
   },
   "packageManager": "npm@10"
 }

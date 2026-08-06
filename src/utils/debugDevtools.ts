@@ -1,8 +1,8 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+/** 生产包中按 F12 打开/关闭 DevTools */
+import { isElectron } from './electron'
 
-/** 生产包中按 F12 打开/关闭 DevTools（需 Cargo devtools feature） */
 export function setupDevtoolsShortcut() {
-  if (!isTauri()) {
+  if (!isElectron() || !window.qms?.toggleDevtools) {
     return
   }
 
@@ -13,7 +13,7 @@ export function setupDevtoolsShortcut() {
 
     event.preventDefault()
 
-    invoke('plugin:webview|internal_toggle_devtools').catch((error) => {
+    window.qms.toggleDevtools().catch((error) => {
       console.error('打开 DevTools 失败', error)
     })
   })

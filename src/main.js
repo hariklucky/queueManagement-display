@@ -5,7 +5,7 @@ import { setupDevtoolsShortcut } from './utils/debugDevtools'
 import { setupTouchKeyboard } from './utils/touchKeyboard'
 import { initRuntimeConfig, getApiBaseURL } from './utils/runtimeConfig'
 import { isHttpLogEnabled } from './utils/httpLogger'
-import { isTauri } from '@tauri-apps/api/core'
+import { isElectron } from './utils/electron'
 
 function clearBootStatus() {
   document.getElementById('boot-status')?.remove()
@@ -43,11 +43,12 @@ async function bootstrap() {
   if (isHttpLogEnabled()) {
     console.info('[QMS] 运行环境', {
       mode: import.meta.env.MODE,
-      isTauri: isTauri(),
+      isElectron: isElectron(),
       apiBaseURL: getApiBaseURL(),
-      hint: isTauri() && import.meta.env.PROD
-        ? '生产包 HTTP 走 Rust 原生请求，请在 Console 查看 [QMS] 日志（Network 不显示真实地址）'
-        : '开发模式可在 Network 面板查看 /api 请求',
+      hint:
+        isElectron() && import.meta.env.PROD
+          ? '生产包 HTTP 走 Electron 主进程请求，请在 Console 查看 [QMS] 日志（Network 不显示真实地址）'
+          : '开发模式可在 Network 面板查看 /api 请求',
     })
   }
 }

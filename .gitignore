@@ -10,12 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+release
 *.local
 
-# Tauri
-src-tauri/target
-src-tauri/gen/schemas
-.tools
+# Electron
+.cache
 
 # 本地部署配置（复制 config.example.json 后修改）
 config.json

@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { getElectronPlatform, isElectron } from './electron'
 import {
   cancelPendingSystemKeyboardInvoke,
   scheduleSystemKeyboardInvoke,
@@ -29,13 +29,8 @@ let activeInput: HTMLInputElement | HTMLTextAreaElement | null = null
 let lastActivatedInput: HTMLElement | null = null
 let lastActivatedAt = 0
 
-function isTauriRuntime() {
-  return (
-    isTauri() ||
-    '__TAURI_INTERNALS__' in window ||
-    '__TAURI__' in window ||
-    Boolean(import.meta.env.TAURI_ENV_PLATFORM)
-  )
+function isDesktopRuntime() {
+  return isElectron()
 }
 
 function logTouchKeyboard(message: string, detail?: unknown) {
@@ -91,7 +86,7 @@ function prepareInputForTouchKeyboard(input: HTMLElement) {
   if (
     onScreenKeyboardVisible.value ||
     shouldForceOnScreenKeyboard() ||
-    !isTauriRuntime()
+    !isDesktopRuntime()
   ) {
     focusInputAtEnd(input)
     return
@@ -123,24 +118,24 @@ function focusInputAtEnd(input: HTMLInputElement | HTMLTextAreaElement) {
   }
 }
 
-function isNonWindowsTauriRuntime() {
-  const platform = import.meta.env.TAURI_ENV_PLATFORM
-  if (platform) {
-    return isTauriRuntime() && platform !== 'windows'
+function isNonWindowsDesktopRuntime() {
+  if (!isDesktopRuntime()) {
+    return false
   }
 
-  return (
-    isTauriRuntime() &&
-    typeof navigator !== 'undefined' &&
-    !/Win/i.test(navigator.userAgent)
-  )
+  const platform = getElectronPlatform()
+  if (platform) {
+    return platform !== 'win32'
+  }
+
+  return typeof navigator !== 'undefined' && !/Win/i.test(navigator.userAgent)
 }
 
 function shouldUseInAppKeyboardOnly() {
   return (
     shouldForceOnScreenKeyboard() ||
-    !isTauriRuntime() ||
-    isNonWindowsTauriRuntime()
+    !isDesktopRuntime() ||
+    isNonWindowsDesktopRuntime()
   )
 }
 
@@ -180,7 +175,6 @@ function shouldOpenOnScreenKeyboardImmediately(
     return true
   }
 
-  // 应用内键盘已展示时，只切换绑定输入框，不再唤起系统键盘
   if (onScreenKeyboardVisible.value) {
     return true
   }
@@ -208,7 +202,11 @@ async function invokeTouchKeyboard(source: string) {
 
   for (let attempt = 1; attempt <= KEYBOARD_RETRY_COUNT; attempt += 1) {
     try {
-      const result = await invoke<TouchKeyboardResult>('show_touch_keyboard')
+      if (!window.qms?.showTouchKeyboard) {
+        return { method: 'none', visible: false }
+      }
+
+      const result = await window.qms.showTouchKeyboard()
       lastResult = result
 
       logTouchKeyboard('触摸键盘命令已执行', { source, attempt, ...result })
@@ -265,14 +263,14 @@ async function showTouchKeyboard(source: string) {
     return
   }
 
-  if (!isTauriRuntime()) {
+  if (!isDesktopRuntime()) {
     if (activeInput) {
       openOnScreenKeyboard(activeInput)
     }
     return
   }
 
-  if (shouldForceOnScreenKeyboard() || isNonWindowsTauriRuntime()) {
+  if (shouldForceOnScreenKeyboard() || isNonWindowsDesktopRuntime()) {
     logTouchKeyboard('直接使用应用内虚拟键盘', { source })
     openFallbackKeyboard()
     return
@@ -358,12 +356,12 @@ function handleInputActivate(event: Event) {
 }
 
 async function warmUpTouchKeyboard() {
-  if (!isTauriRuntime() || shouldForceOnScreenKeyboard()) {
+  if (!isDesktopRuntime() || shouldForceOnScreenKeyboard()) {
     return
   }
 
   try {
-    await invoke('warm_up_touch_keyboard')
+    await window.qms?.warmUpTouchKeyboard?.()
     logTouchKeyboard('触摸键盘预热完成')
   } catch (error) {
     logTouchKeyboard('触摸键盘预热失败', error)
@@ -379,10 +377,10 @@ export function setupTouchKeyboard() {
   installed = true
 
   logTouchKeyboard('开始注册监听', {
-    isTauri: isTauri(),
-    isTauriRuntime: isTauriRuntime(),
+    isElectron: isElectron(),
+    isDesktopRuntime: isDesktopRuntime(),
     forceOnScreenKeyboard: shouldForceOnScreenKeyboard(),
-    platform: import.meta.env.TAURI_ENV_PLATFORM,
+    platform: getElectronPlatform(),
     mode: import.meta.env.MODE,
   })
 

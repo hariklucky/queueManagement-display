@@ -15,10 +15,44 @@ interface ImportMetaEnv {
   readonly VITE_TICKET_PRINTER_URL?: string
   readonly VITE_APP_DEBUG?: string
   readonly VITE_FORCE_ON_SCREEN_KEYBOARD?: string
-  readonly TAURI_ENV_DEBUG?: string
-  readonly TAURI_ENV_PLATFORM?: string
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv
+}
+
+interface QmsNativeHttpResponse {
+  status: number
+  body: string
+}
+
+interface QmsTouchKeyboardResult {
+  method: string
+  visible: boolean
+}
+
+interface QmsRuntimeConfig {
+  apiBaseUrl?: string
+  gatewayId?: string
+  forceOnScreenKeyboard?: boolean
+}
+
+interface QmsBridge {
+  isElectron: true
+  platform: NodeJS.Platform | string
+  loadRuntimeConfig(): Promise<QmsRuntimeConfig>
+  httpFetch(payload: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: string | null
+  }): Promise<QmsNativeHttpResponse>
+  showTouchKeyboard(): Promise<QmsTouchKeyboardResult>
+  warmUpTouchKeyboard(): Promise<boolean>
+  toggleDevtools(): Promise<boolean>
+  openExternal(url: string): Promise<boolean>
+}
+
+interface Window {
+  qms?: QmsBridge
 }

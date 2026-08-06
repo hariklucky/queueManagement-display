@@ -1,0 +1,54 @@
+name: Build Electron ARM64 DEB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-arm64-linux:
+    runs-on: ubuntu-22.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            rpm fakeroot dpkg
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build ARM64 deb
+        env:
+          # electron-builder 在 CI 中下载二进制
+          ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+          ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+        run: npm run electron:build:linux:arm64
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifact
+          deb="$(find release -name '*.deb' -type f | head -n 1)"
+          if [ -z "$deb" ]; then
+            echo "错误：未找到 deb"
+            ls -laR release || true
+            exit 1
+          fi
+          cp "$deb" artifact/
+          ls -la artifact/
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-arm64-deb
+          path: artifact/
+          retention-days: 30
+          if-no-files-found: error

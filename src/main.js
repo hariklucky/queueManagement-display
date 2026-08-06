@@ -30,15 +30,17 @@ async function bootstrap() {
   }
 
   setupDevtoolsShortcut()
-  app.mount('#app')
-  clearBootStatus()
-  setupTouchKeyboard()
 
+  // 必须先读完安装目录 config.json，再挂载页面，避免首个请求仍走打包时的 VITE_API_BASE_URL
   try {
     await initRuntimeConfig()
   } catch (error) {
     console.error('[QMS] 初始化运行配置失败', error)
   }
+
+  app.mount('#app')
+  clearBootStatus()
+  setupTouchKeyboard()
 
   if (isHttpLogEnabled()) {
     console.info('[QMS] 运行环境', {

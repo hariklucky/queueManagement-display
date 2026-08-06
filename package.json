@@ -18,10 +18,10 @@
     "preview": "vite preview",
     "preview:prod": "vite preview --mode production",
     "electron:dev": "concurrently -k \"vite --mode development\" \"wait-on http://127.0.0.1:5173 && electron .\"",
-    "electron:build": "npm run build:prod && electron-builder",
-    "electron:build:linux:arm64": "npm run build:prod && electron-builder --linux deb --arm64",
-    "electron:build:linux:amd64": "npm run build:prod && electron-builder --linux deb --x64",
-    "electron:build:win": "npm run build:prod && electron-builder --win nsis --x64"
+    "electron:build": "npm run build:prod && electron-builder --publish never",
+    "electron:build:linux:arm64": "npm run build:prod && electron-builder --linux deb --arm64 --publish never",
+    "electron:build:linux:amd64": "npm run build:prod && electron-builder --linux deb --x64 --publish never",
+    "electron:build:win": "npm run build:prod && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "pinyin-match-hanzi": "^0.1.1",

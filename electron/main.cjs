@@ -89,12 +89,16 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL(DEV_SERVER_URL)
-    if (process.env.ELECTRON_OPEN_DEVTOOLS === '1') {
-      mainWindow.webContents.openDevTools({ mode: 'detach' })
-    }
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
+
+  // 启动时自动打开开发者工具（便于麒麟等现场排查）
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null

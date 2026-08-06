@@ -63,8 +63,8 @@ MAIN_BIN="$(kylin_detect_main_bin "$ROOT")"
 kylin_ensure_bin_executable "$ROOT" "$MAIN_BIN"
 echo "主程序: usr/bin/$MAIN_BIN"
 
-echo "=== 确保 WebKit 所需 FreeType / GBM 已内置（强制校验符号）==="
-rm -f "$ROOT/usr/lib/libfreetype.so.6" "$ROOT/usr/lib/libgbm.so.1"
+echo "=== 确保 WebKit 所需 FreeType / GBM 已内置 ==="
+# 仅在符号不满足时由 ensure_* 内部替换，勿无强制删除（避免 CI 外网下载失败）
 kylin_ensure_freetype_for_webkit "$ROOT"
 kylin_ensure_gbm_for_webkit "$ROOT"
 kylin_copy_webkit_helpers "$ROOT"

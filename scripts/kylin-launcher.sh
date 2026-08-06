@@ -518,7 +518,11 @@ kylin_fetch_freetype_via_apt() {
     rm -rf "$workdir"
     return 1
   fi
-  dpkg-deb -x "$pkg_file" "$workdir/extract"
+  if ! dpkg-deb -x "$pkg_file" "$workdir/extract"; then
+    echo "  警告：解压 apt 下载的 libfreetype6 失败" >&2
+    rm -rf "$workdir"
+    return 1
+  fi
   lib_path="$(find "$workdir/extract" -name 'libfreetype.so.6' | head -n 1 || true)"
   if [[ -z "$lib_path" ]] || ! kylin_copy_lib_force "$lib_path" "$dest_dir"; then
     echo "  警告：apt 包中未找到可用的 libfreetype.so.6" >&2
@@ -535,19 +539,22 @@ kylin_fetch_jammy_freetype() {
 
   case "$(uname -m)" in
     aarch64|arm64)
-      # jammy-updates 优先，回退到 jammy 初始版本
       for deb_url in \
-        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_arm64.deb" \
-        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1build1_arm64.deb"; do
-        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+        "https://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_arm64.deb" \
+        "https://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1build1_arm64.deb"; do
+        if kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'; then
+          return 0
+        fi
       done
       return 1
       ;;
     x86_64|amd64)
       for deb_url in \
-        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_amd64.deb" \
-        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1build1_amd64.deb"; do
-        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+        "https://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_amd64.deb" \
+        "https://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1build1_amd64.deb"; do
+        if kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'; then
+          return 0
+        fi
       done
       return 1
       ;;
@@ -564,17 +571,21 @@ kylin_fetch_noble_freetype() {
   case "$(uname -m)" in
     aarch64|arm64)
       for deb_url in \
-        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.1_arm64.deb" \
-        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_arm64.deb"; do
-        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+        "https://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.1_arm64.deb" \
+        "https://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_arm64.deb"; do
+        if kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'; then
+          return 0
+        fi
       done
       return 1
       ;;
     x86_64|amd64)
       for deb_url in \
-        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.1_amd64.deb" \
-        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_amd64.deb"; do
-        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+        "https://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.1_amd64.deb" \
+        "https://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_amd64.deb"; do
+        if kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'; then
+          return 0
+        fi
       done
       return 1
       ;;
@@ -608,10 +619,14 @@ kylin_extract_deb_libs() {
       rm -rf "$workdir"
       return 1
     fi
-    kylin_copy_lib_force "$lib_path" "$dest_dir"
+    if ! kylin_copy_lib_force "$lib_path" "$dest_dir"; then
+      echo "  警告：复制 $lib_name 失败: $lib_path" >&2
+      rm -rf "$workdir"
+      return 1
+    fi
   else
     while IFS= read -r -d '' lib_path; do
-      kylin_copy_lib_force "$lib_path" "$dest_dir"
+      kylin_copy_lib_force "$lib_path" "$dest_dir" || true
     done < <(find "$workdir/extract" \( -name '*.so' -o -name '*.so.*' \) -type f -print0 2>/dev/null)
   fi
   rm -rf "$workdir"
@@ -624,20 +639,24 @@ kylin_fetch_jammy_gbm_stack() {
 
   case "$(uname -m)" in
     aarch64|arm64)
-      drm_url="http://ports.ubuntu.com/pool/main/libd/libdrm/libdrm2_2.4.113-2~ubuntu0.22.04.1_arm64.deb"
-      gbm_url="http://ports.ubuntu.com/pool/main/m/mesa/libgbm1_23.2.1-1ubuntu3.1~22.04.3_arm64.deb"
+      drm_url="https://ports.ubuntu.com/pool/main/libd/libdrm/libdrm2_2.4.113-2~ubuntu0.22.04.1_arm64.deb"
+      gbm_url="https://ports.ubuntu.com/pool/main/m/mesa/libgbm1_23.2.1-1ubuntu3.1~22.04.3_arm64.deb"
       ;;
     x86_64|amd64)
-      drm_url="http://archive.ubuntu.com/ubuntu/pool/main/libd/libdrm/libdrm2_2.4.113-2~ubuntu0.22.04.1_amd64.deb"
-      gbm_url="http://archive.ubuntu.com/ubuntu/pool/main/m/mesa/libgbm1_23.2.1-1ubuntu3.1~22.04.3_amd64.deb"
+      drm_url="https://archive.ubuntu.com/ubuntu/pool/main/libd/libdrm/libdrm2_2.4.113-2~ubuntu0.22.04.1_amd64.deb"
+      gbm_url="https://archive.ubuntu.com/ubuntu/pool/main/m/mesa/libgbm1_23.2.1-1ubuntu3.1~22.04.3_amd64.deb"
       ;;
     *)
       return 1
       ;;
   esac
 
-  kylin_extract_deb_libs "$drm_url" "$dest_dir" || return 1
-  kylin_extract_deb_libs "$gbm_url" "$dest_dir" || return 1
+  if ! kylin_extract_deb_libs "$drm_url" "$dest_dir"; then
+    return 1
+  fi
+  if ! kylin_extract_deb_libs "$gbm_url" "$dest_dir"; then
+    return 1
+  fi
   return 0
 }
 
@@ -754,21 +773,10 @@ kylin_ensure_freetype_for_webkit() {
 
   rm -f "$dest"
 
-  # 优先 Ubuntu 22.04：符号足够，且在旧麒麟 ARM CPU 上比 24.04 更安全
-  echo "  下载 Ubuntu 22.04 libfreetype6（麒麟 CPU 兼容优先）..."
-  if kylin_fetch_jammy_freetype "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
-    if kylin_freetype_has_webkit_symbol "$dest"; then
-      echo "  已使用 Ubuntu 22.04 libfreetype.so.6"
-      return 0
-    fi
-    echo "  警告：Ubuntu 22.04 libfreetype 符号检查仍失败" >&2
-    rm -f "$dest"
-  fi
-
+  # CI / 构建机：优先 apt 与系统库（不依赖外网 ports.ubuntu.com）
   echo "  尝试 apt-get download libfreetype6..."
   if kylin_fetch_freetype_via_apt "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    kylin_bundle_single_lib_deps "$dest" "$app_dir" || true
     if kylin_freetype_has_webkit_symbol "$dest"; then
       echo "  已使用 apt 下载的 libfreetype.so.6"
       return 0
@@ -779,7 +787,7 @@ kylin_ensure_freetype_for_webkit() {
   lib_path="$(kylin_freetype_from_webkit_ldd "$app_dir" || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libfreetype.so.6（WebKit ldd）<- $lib_path"
-    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib" || true
     if kylin_freetype_has_webkit_symbol "$dest"; then
       return 0
     fi
@@ -790,7 +798,7 @@ kylin_ensure_freetype_for_webkit() {
   lib_path="$(kylin_find_lib_on_system libfreetype.so.6 || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libfreetype.so.6（系统）<- $lib_path"
-    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib" || true
     if kylin_freetype_has_webkit_symbol "$dest"; then
       return 0
     fi
@@ -798,9 +806,21 @@ kylin_ensure_freetype_for_webkit() {
     rm -f "$dest"
   fi
 
+  # 外网兜底：Ubuntu 22.04（麒麟 CPU 兼容）
+  echo "  下载 Ubuntu 22.04 libfreetype6（外网兜底）..."
+  if kylin_fetch_jammy_freetype "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir" || true
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 22.04 libfreetype.so.6"
+      return 0
+    fi
+    echo "  警告：Ubuntu 22.04 libfreetype 符号检查仍失败" >&2
+    rm -f "$dest"
+  fi
+
   echo "  最后尝试 Ubuntu 24.04 libfreetype6..."
   if kylin_fetch_noble_freetype "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    kylin_bundle_single_lib_deps "$dest" "$app_dir" || true
     if kylin_freetype_has_webkit_symbol "$dest"; then
       echo "  已使用 Ubuntu 24.04 libfreetype.so.6"
       return 0
@@ -824,22 +844,14 @@ kylin_ensure_gbm_for_webkit() {
 
   rm -f "$dest" "$app_dir/usr/lib/libdrm.so.2"
 
-  # 只用 Ubuntu 22.04 GBM：24.04 在部分麒麟 ARM CPU 上会 Illegal instruction
-  echo "  下载 Ubuntu 22.04 libgbm1 + libdrm2..."
-  if kylin_fetch_jammy_gbm_stack "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
-    if kylin_gbm_has_webkit_symbol "$dest"; then
-      echo "  已使用 Ubuntu 22.04 libgbm.so.1"
-      return 0
-    fi
-    rm -f "$dest"
-  fi
-
+  # 优先系统 / WebKit ldd（CI 上 Ubuntu 22.04 自带即可）
   lib_path="$(kylin_webkit_ldd_lib_path "$app_dir" 'libgbm\.so' || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libgbm.so.1（WebKit ldd）<- $lib_path"
-    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib" || true
     if kylin_gbm_has_webkit_symbol "$dest"; then
+      # 顺带补 libdrm
+      kylin_copy_named_lib_to_app libdrm.so.2 "$app_dir" || true
       return 0
     fi
     rm -f "$dest"
@@ -848,8 +860,19 @@ kylin_ensure_gbm_for_webkit() {
   lib_path="$(kylin_find_lib_on_system libgbm.so.1 || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libgbm.so.1（系统）<- $lib_path"
-    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
+    kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib" || true
     if kylin_gbm_has_webkit_symbol "$dest"; then
+      kylin_copy_named_lib_to_app libdrm.so.2 "$app_dir" || true
+      return 0
+    fi
+    rm -f "$dest"
+  fi
+
+  echo "  下载 Ubuntu 22.04 libgbm1 + libdrm2（外网兜底）..."
+  if kylin_fetch_jammy_gbm_stack "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir" || true
+    if kylin_gbm_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 22.04 libgbm.so.1"
       return 0
     fi
     rm -f "$dest"

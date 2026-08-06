@@ -320,7 +320,11 @@ kylin_prepare_runtime() {
 }
 
 kylin_sym_ok() {
-  readelf -Ws "\$1" 2>/dev/null | grep -Fq "\$2"
+  # 清空 LD_LIBRARY_PATH，避免系统 objdump/nm/readelf 加载 bundled 库导致 Illegal instruction
+  LD_LIBRARY_PATH= objdump -T "\$1" 2>/dev/null | grep -Fq "\$2" && return 0
+  LD_LIBRARY_PATH= nm -D --defined-only "\$1" 2>/dev/null | grep -Fq "\$2" && return 0
+  LD_LIBRARY_PATH= readelf --dyn-syms "\$1" 2>/dev/null | grep -Fq "\$2" && return 0
+  return 1
 }
 
 echo "=== QMS 启动诊断 ==="
@@ -355,7 +359,7 @@ else
 fi
 echo "WEBKIT_EXEC_PATH=\$WEBKIT_EXEC_PATH"
 echo
-echo "=== FreeType / GBM 符号（readelf 静态检查）==="
+echo "=== FreeType / GBM 符号 ==="
 if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
   if kylin_sym_ok "\$APP_ROOT/usr/lib/libfreetype.so.6" FT_Get_Color_Glyph_Paint; then
     echo "  libfreetype OK"
@@ -449,9 +453,19 @@ kylin_lib_has_dynamic_symbol() {
   local lib="$1"
   local symbol="$2"
   [[ -f "$lib" ]] || return 1
-  # 仅用 readelf 静态读符号表；麒麟上 objdump/nm 解析 bundled .so 可能 Illegal instruction
-  readelf -Ws "$lib" 2>/dev/null | grep -Fq " $symbol" && return 0
-  readelf -Ws "$lib" 2>/dev/null | grep -Fq "$symbol" && return 0
+  # 清空 LD_LIBRARY_PATH：麒麟上若带着 bundled 库路径跑 objdump/nm，会 Illegal instruction
+  if LD_LIBRARY_PATH= objdump -T "$lib" 2>/dev/null | grep -Fq "$symbol"; then
+    return 0
+  fi
+  if LD_LIBRARY_PATH= nm -D --defined-only "$lib" 2>/dev/null | grep -Fq "$symbol"; then
+    return 0
+  fi
+  if LD_LIBRARY_PATH= readelf --dyn-syms "$lib" 2>/dev/null | grep -Fq "$symbol"; then
+    return 0
+  fi
+  if LD_LIBRARY_PATH= readelf -Ws "$lib" 2>/dev/null | grep -Fq "$symbol"; then
+    return 0
+  fi
   return 1
 }
 
@@ -491,23 +505,59 @@ kylin_bundle_single_lib_deps() {
   done < <(ldd "$lib_file" 2>/dev/null || true)
 }
 
+kylin_fetch_freetype_via_apt() {
+  local dest_dir="$1"
+  local workdir pkg_file lib_path
+
+  command -v apt-get >/dev/null 2>&1 || return 1
+  workdir="$(mktemp -d)"
+  if ! (cd "$workdir" && apt-get download -qq libfreetype6); then
+    echo "  警告：apt-get download libfreetype6 失败" >&2
+    rm -rf "$workdir"
+    return 1
+  fi
+  pkg_file="$(find "$workdir" -maxdepth 1 -name 'libfreetype6_*.deb' | head -n 1 || true)"
+  if [[ -z "$pkg_file" || ! -f "$pkg_file" ]]; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  dpkg-deb -x "$pkg_file" "$workdir/extract"
+  lib_path="$(find "$workdir/extract" -name 'libfreetype.so.6' | head -n 1 || true)"
+  if [[ -z "$lib_path" ]] || ! kylin_copy_lib_force "$lib_path" "$dest_dir"; then
+    echo "  警告：apt 包中未找到可用的 libfreetype.so.6" >&2
+    rm -rf "$workdir"
+    return 1
+  fi
+  rm -rf "$workdir"
+  return 0
+}
+
 kylin_fetch_jammy_freetype() {
   local dest_dir="$1"
   local deb_url
 
   case "$(uname -m)" in
     aarch64|arm64)
-      deb_url="http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_arm64.deb"
+      # jammy-updates 优先，回退到 jammy 初始版本
+      for deb_url in \
+        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_arm64.deb" \
+        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1build1_arm64.deb"; do
+        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+      done
+      return 1
       ;;
     x86_64|amd64)
-      deb_url="http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_amd64.deb"
+      for deb_url in \
+        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_amd64.deb" \
+        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1build1_amd64.deb"; do
+        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+      done
+      return 1
       ;;
     *)
       return 1
       ;;
   esac
-
-  kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'
 }
 
 kylin_fetch_noble_freetype() {
@@ -516,17 +566,25 @@ kylin_fetch_noble_freetype() {
 
   case "$(uname -m)" in
     aarch64|arm64)
-      deb_url="http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_arm64.deb"
+      for deb_url in \
+        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.1_arm64.deb" \
+        "http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_arm64.deb"; do
+        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+      done
+      return 1
       ;;
     x86_64|amd64)
-      deb_url="http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_amd64.deb"
+      for deb_url in \
+        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.1_amd64.deb" \
+        "http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_amd64.deb"; do
+        kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6' && return 0
+      done
+      return 1
       ;;
     *)
       return 1
       ;;
   esac
-
-  kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'
 }
 
 kylin_extract_deb_libs() {
@@ -536,14 +594,20 @@ kylin_extract_deb_libs() {
   local workdir lib_path
 
   workdir="$(mktemp -d)"
-  if ! curl -fsSL -o "$workdir/pkg.deb" "$deb_url"; then
+  if ! curl -fsSL --retry 3 --retry-delay 2 -o "$workdir/pkg.deb" "$deb_url"; then
+    echo "  警告：下载失败: $deb_url" >&2
     rm -rf "$workdir"
     return 1
   fi
-  dpkg-deb -x "$workdir/pkg.deb" "$workdir/extract"
+  if ! dpkg-deb -x "$workdir/pkg.deb" "$workdir/extract"; then
+    echo "  警告：解压 deb 失败: $deb_url" >&2
+    rm -rf "$workdir"
+    return 1
+  fi
   if [[ -n "$lib_name" ]]; then
     lib_path="$(find "$workdir/extract" -name "$lib_name" | head -n 1 || true)"
-    if [[ -z "$lib_path" || ! -f "$lib_path" ]]; then
+    if [[ -z "$lib_path" || ! -e "$lib_path" ]]; then
+      echo "  警告：deb 中未找到 $lib_name: $deb_url" >&2
       rm -rf "$workdir"
       return 1
     fi
@@ -659,7 +723,8 @@ EOF
 kylin_copy_lib_force() {
   local src="$1"
   local dest_dir="$2"
-  [[ -f "$src" ]] || return 1
+  # -e：允许符号链接；cp -L：跟随链接，目标文件名仍用 basename(src)（如 libfreetype.so.6）
+  [[ -e "$src" ]] || return 1
   mkdir -p "$dest_dir"
   cp -Lf "$src" "$dest_dir/"
 }
@@ -699,6 +764,7 @@ kylin_ensure_freetype_for_webkit() {
     if kylin_freetype_has_webkit_symbol "$dest"; then
       return 0
     fi
+    echo "  警告：WebKit ldd 的 libfreetype 缺少 FT_Get_Color_Glyph_Paint" >&2
     rm -f "$dest"
   fi
 
@@ -707,6 +773,17 @@ kylin_ensure_freetype_for_webkit() {
     echo "  内置 libfreetype.so.6（系统）<- $lib_path"
     kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
     if kylin_freetype_has_webkit_symbol "$dest"; then
+      return 0
+    fi
+    echo "  警告：系统 libfreetype 缺少 FT_Get_Color_Glyph_Paint" >&2
+    rm -f "$dest"
+  fi
+
+  echo "  尝试 apt-get download libfreetype6..."
+  if kylin_fetch_freetype_via_apt "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      echo "  已使用 apt 下载的 libfreetype.so.6"
       return 0
     fi
     rm -f "$dest"
@@ -719,6 +796,7 @@ kylin_ensure_freetype_for_webkit() {
       echo "  已使用 Ubuntu 24.04 libfreetype.so.6"
       return 0
     fi
+    echo "  警告：Ubuntu 24.04 libfreetype 符号检查仍失败" >&2
     rm -f "$dest"
   fi
 
@@ -729,6 +807,7 @@ kylin_ensure_freetype_for_webkit() {
       echo "  已使用 Ubuntu 22.04 libfreetype.so.6"
       return 0
     fi
+    echo "  警告：Ubuntu 22.04 libfreetype 符号检查仍失败" >&2
   fi
 
   echo "错误：无法获取含 FT_Get_Color_Glyph_Paint 的 libfreetype.so.6" >&2

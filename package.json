@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "description": "报到取号 - 营业厅现场终端桌面取号应用",
-  "author": "QMS",
+  "author": {
+    "name": "QMS",
+    "email": "qms@localhost"
+  },
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -60,6 +63,7 @@
         "deb"
       ],
       "category": "Utility",
+      "maintainer": "QMS <qms@localhost>",
       "synopsis": "报到取号",
       "description": "面向营业厅现场终端的桌面取号应用，支持预约取号与现场取号，集成身份证读卡与小票打印能力。",
       "executableName": "qms",

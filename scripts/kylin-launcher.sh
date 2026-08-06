@@ -320,11 +320,7 @@ kylin_prepare_runtime() {
 }
 
 kylin_sym_ok() {
-  _lib="\$1"
-  _sym="\$2"
-  objdump -T "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
-  nm -D --defined-only "\$_lib" 2>/dev/null | grep -Fq "\$_sym" && return 0
-  return 1
+  readelf -Ws "\$1" 2>/dev/null | grep -Fq "\$2"
 }
 
 echo "=== QMS 启动诊断 ==="
@@ -344,55 +340,58 @@ echo
 _launch_ok=1
 echo "=== WebKit 子进程 ==="
 kylin_prepare_runtime
-for helper in WebKitNetworkProcess WebKitWebProcess WebKitGPUProcess; do
-  if [ -x "\$WEBKIT_EXEC_PATH/\$helper" ]; then
+for helper in WebKitNetworkProcess WebKitWebProcess; do
+  if [ -f "\$WEBKIT_EXEC_PATH/\$helper" ]; then
     echo "  已内置: \$helper"
   else
     echo "  缺少: \$helper"
-    if [ "\$helper" = "WebKitNetworkProcess" ]; then
-      _launch_ok=0
-    fi
+    _launch_ok=0
   fi
 done
+if [ -f "\$WEBKIT_EXEC_PATH/WebKitGPUProcess" ]; then
+  echo "  已内置: WebKitGPUProcess"
+else
+  echo "  可选: WebKitGPUProcess（软件渲染模式下可缺失）"
+fi
 echo "WEBKIT_EXEC_PATH=\$WEBKIT_EXEC_PATH"
 echo
-echo "=== FreeType / GBM 符号 ==="
+echo "=== FreeType / GBM 符号（readelf 静态检查）==="
 if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
   if kylin_sym_ok "\$APP_ROOT/usr/lib/libfreetype.so.6" FT_Get_Color_Glyph_Paint; then
-    echo "libfreetype 包含 FT_Get_Color_Glyph_Paint"
+    echo "  libfreetype OK"
   else
-    echo "错误：libfreetype 缺少 FT_Get_Color_Glyph_Paint" >&2
+    echo "  错误：libfreetype 缺少 FT_Get_Color_Glyph_Paint" >&2
     _launch_ok=0
   fi
 else
-  echo "错误：未 bundled libfreetype.so.6" >&2
+  echo "  错误：未 bundled libfreetype.so.6" >&2
   _launch_ok=0
 fi
 if [ -f "\$APP_ROOT/usr/lib/libgbm.so.1" ]; then
   if kylin_sym_ok "\$APP_ROOT/usr/lib/libgbm.so.1" gbm_bo_create_with_modifiers2; then
-    echo "libgbm 包含 gbm_bo_create_with_modifiers2"
+    echo "  libgbm OK"
   else
-    echo "错误：libgbm 缺少 gbm_bo_create_with_modifiers2" >&2
+    echo "  错误：libgbm 缺少 gbm_bo_create_with_modifiers2" >&2
     _launch_ok=0
   fi
 else
-  echo "错误：未 bundled libgbm.so.1" >&2
+  echo "  错误：未 bundled libgbm.so.1" >&2
   _launch_ok=0
 fi
 echo
 echo "=== 子进程 loader 检查 ==="
 _helper="\$WEBKIT_EXEC_PATH/WebKitNetworkProcess"
-if [ -x "\$_helper" ]; then
+if [ -f "\$_helper" ]; then
   _interp="\$(readelf -l "\$_helper" 2>/dev/null | awk '/Requesting program interpreter/ { gsub(/[][]/, "", \$NF); print \$NF; exit }')"
   if [ -n "\$_interp" ]; then
-    echo "WebKitNetworkProcess interpreter: \$_interp"
+    echo "  WebKitNetworkProcess interpreter: \$_interp"
     if [ ! -f "\$_interp" ]; then
-      echo "错误：子进程 loader 不存在（Linux 会报「没有那个文件或目录」）" >&2
+      echo "  错误：子进程 loader 不存在（Linux 会报「没有那个文件或目录」）" >&2
       _launch_ok=0
     fi
   fi
 else
-  echo "错误：缺少 WebKitNetworkProcess: \$_helper" >&2
+  echo "  错误：缺少 WebKitNetworkProcess: \$_helper" >&2
   _launch_ok=0
 fi
 echo
@@ -400,6 +399,10 @@ if [ "\${_launch_ok:-1}" = "0" ]; then
   echo "=== 诊断未通过，跳过启动 ===" >&2
   echo "请重新安装最新 deb 包（需含 WebKit 子进程与新版 FreeType/GBM）。" >&2
   exit 1
+fi
+if [ -n "\${QMS_DEBUG_NO_LAUNCH:-}" ]; then
+  echo "=== 诊断通过 ==="
+  exit 0
 fi
 echo "=== 尝试启动 ==="
 kylin_prepare_runtime
@@ -446,12 +449,9 @@ kylin_lib_has_dynamic_symbol() {
   local lib="$1"
   local symbol="$2"
   [[ -f "$lib" ]] || return 1
-  if objdump -T "$lib" 2>/dev/null | grep -Fq "$symbol"; then
-    return 0
-  fi
-  if nm -D --defined-only "$lib" 2>/dev/null | grep -Fq "$symbol"; then
-    return 0
-  fi
+  # 仅用 readelf 静态读符号表；麒麟上 objdump/nm 解析 bundled .so 可能 Illegal instruction
+  readelf -Ws "$lib" 2>/dev/null | grep -Fq " $symbol" && return 0
+  readelf -Ws "$lib" 2>/dev/null | grep -Fq "$symbol" && return 0
   return 1
 }
 
@@ -489,6 +489,25 @@ kylin_bundle_single_lib_deps() {
         kylin_copy_lib_force "$lib_path" "$app_dir/usr/lib"
     fi
   done < <(ldd "$lib_file" 2>/dev/null || true)
+}
+
+kylin_fetch_jammy_freetype() {
+  local dest_dir="$1"
+  local deb_url
+
+  case "$(uname -m)" in
+    aarch64|arm64)
+      deb_url="http://ports.ubuntu.com/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_arm64.deb"
+      ;;
+    x86_64|amd64)
+      deb_url="http://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.11.1+dfsg-1ubuntu0.3_amd64.deb"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  kylin_extract_deb_libs "$deb_url" "$dest_dir" 'libfreetype.so.6'
 }
 
 kylin_fetch_noble_freetype() {
@@ -671,6 +690,8 @@ kylin_ensure_freetype_for_webkit() {
     return 0
   fi
 
+  rm -f "$dest"
+
   lib_path="$(kylin_freetype_from_webkit_ldd "$app_dir" || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libfreetype.so.6（WebKit ldd）<- $lib_path"
@@ -678,6 +699,7 @@ kylin_ensure_freetype_for_webkit() {
     if kylin_freetype_has_webkit_symbol "$dest"; then
       return 0
     fi
+    rm -f "$dest"
   fi
 
   lib_path="$(kylin_find_lib_on_system libfreetype.so.6 || true)"
@@ -687,13 +709,24 @@ kylin_ensure_freetype_for_webkit() {
     if kylin_freetype_has_webkit_symbol "$dest"; then
       return 0
     fi
+    rm -f "$dest"
   fi
 
-  echo "  系统 FreeType 版本过旧，下载 Ubuntu 24.04 libfreetype6..."
+  echo "  下载 Ubuntu 24.04 libfreetype6（WebKit 需要 FT_Get_Color_Glyph_Paint）..."
   if kylin_fetch_noble_freetype "$app_dir/usr/lib"; then
     kylin_bundle_single_lib_deps "$dest" "$app_dir"
     if kylin_freetype_has_webkit_symbol "$dest"; then
       echo "  已使用 Ubuntu 24.04 libfreetype.so.6"
+      return 0
+    fi
+    rm -f "$dest"
+  fi
+
+  echo "  尝试 Ubuntu 22.04 libfreetype6..."
+  if kylin_fetch_jammy_freetype "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 22.04 libfreetype.so.6"
       return 0
     fi
   fi
@@ -712,6 +745,8 @@ kylin_ensure_gbm_for_webkit() {
     return 0
   fi
 
+  rm -f "$dest" "$app_dir/usr/lib/libdrm.so.2"
+
   lib_path="$(kylin_webkit_ldd_lib_path "$app_dir" 'libgbm\.so' || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libgbm.so.1（WebKit ldd）<- $lib_path"
@@ -719,6 +754,7 @@ kylin_ensure_gbm_for_webkit() {
     if kylin_gbm_has_webkit_symbol "$dest"; then
       return 0
     fi
+    rm -f "$dest"
   fi
 
   lib_path="$(kylin_find_lib_on_system libgbm.so.1 || true)"
@@ -728,9 +764,10 @@ kylin_ensure_gbm_for_webkit() {
     if kylin_gbm_has_webkit_symbol "$dest"; then
       return 0
     fi
+    rm -f "$dest"
   fi
 
-  echo "  系统 GBM 版本过旧，尝试下载 Ubuntu 22.04 libgbm1 + libdrm2..."
+  echo "  下载 Ubuntu 22.04 libgbm1 + libdrm2（避免 24.04 在部分麒麟 CPU 上 Illegal instruction）..."
   if kylin_fetch_jammy_gbm_stack "$app_dir/usr/lib"; then
     kylin_bundle_single_lib_deps "$dest" "$app_dir"
     if kylin_gbm_has_webkit_symbol "$dest"; then
@@ -739,16 +776,7 @@ kylin_ensure_gbm_for_webkit() {
     fi
   fi
 
-  echo "  警告：Jammy GBM 仍不满足要求，尝试 Ubuntu 24.04（部分麒麟 CPU 可能 Illegal instruction）..." >&2
-  if kylin_fetch_noble_gbm_stack "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
-    if kylin_gbm_has_webkit_symbol "$dest"; then
-      echo "  已使用 Ubuntu 24.04 libgbm.so.1"
-      return 0
-    fi
-  fi
-
-  echo "错误：无法获取含 gbm_bo_create_with_modifiers2 的 libgbm.so.1" >&2
+  echo "错误：无法获取含 gbm_bo_create_with_modifiers2 的 libgbm.so.1（已跳过 Ubuntu 24.04 GBM 以防 CPU 不兼容）" >&2
   return 1
 }
 
@@ -956,7 +984,7 @@ kylin_verify_webkit_helpers() {
   local dest
 
   dest="$(kylin_webkit_helper_dir "$app_dir")"
-  if [[ -x "$dest/WebKitNetworkProcess" ]]; then
+  if [[ -f "$dest/WebKitNetworkProcess" ]]; then
     echo "WebKit 子进程已内置: $dest/WebKitNetworkProcess"
     return 0
   fi

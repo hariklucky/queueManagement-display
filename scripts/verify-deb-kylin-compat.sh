@@ -52,8 +52,7 @@ if [[ ! -x "$loader" ]]; then
 fi
 if [[ -f "$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6" ]]; then
   freetype="$WORKDIR/extract/opt/qms/usr/lib/libfreetype.so.6"
-  if objdump -T "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint' \
-    || nm -D --defined-only "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
+  if readelf -Ws "$freetype" 2>/dev/null | grep -Fq 'FT_Get_Color_Glyph_Paint'; then
     echo "deb 已内置含 FT_Get_Color_Glyph_Paint 的 libfreetype.so.6。"
   else
     echo "错误：deb 中 libfreetype.so.6 缺少 FT_Get_Color_Glyph_Paint" >&2
@@ -66,8 +65,7 @@ fi
 
 if [[ -f "$WORKDIR/extract/opt/qms/usr/lib/libgbm.so.1" ]]; then
   gbm="$WORKDIR/extract/opt/qms/usr/lib/libgbm.so.1"
-  if objdump -T "$gbm" 2>/dev/null | grep -Fq 'gbm_bo_create_with_modifiers2' \
-    || nm -D --defined-only "$gbm" 2>/dev/null | grep -Fq 'gbm_bo_create_with_modifiers2'; then
+  if readelf -Ws "$gbm" 2>/dev/null | grep -Fq 'gbm_bo_create_with_modifiers2'; then
     echo "deb 已内置含 gbm_bo_create_with_modifiers2 的 libgbm.so.1。"
   else
     echo "错误：deb 中 libgbm.so.1 缺少 gbm_bo_create_with_modifiers2" >&2
@@ -79,7 +77,7 @@ else
 fi
 
 webkit_helper="$(find "$WORKDIR/extract/opt/qms/usr/lib" -path '*/webkit2gtk-4.1/WebKitNetworkProcess' -type f | head -n 1 || true)"
-if [[ -x "$webkit_helper" ]]; then
+if [[ -f "$webkit_helper" ]]; then
   echo "deb 已内置 WebKit 子进程: ${webkit_helper#"$WORKDIR/extract/opt/qms/"}"
 else
   echo "错误：deb 中缺少 WebKitNetworkProcess 子进程" >&2

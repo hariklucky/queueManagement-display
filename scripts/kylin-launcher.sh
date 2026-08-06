@@ -24,6 +24,17 @@ kylin_glib_dir() {
   esac
 }
 
+kylin_multilib_dir() {
+  case "${1:-$(uname -m)}" in
+    aarch64|arm64) echo "aarch64-linux-gnu" ;;
+    x86_64|amd64) echo "x86_64-linux-gnu" ;;
+    *)
+      echo "错误：不支持的架构 \"${1:-$(uname -m)}\"" >&2
+      return 1
+      ;;
+  esac
+}
+
 kylin_lib_search_dirs() {
   local arch="${1:-$(uname -m)}"
   local arch_dir
@@ -100,6 +111,9 @@ kylin_write_launcher() {
   local main_bin="$3"
   local ld_linux="$4"
   local use_relative="${5:-0}"
+  # 打包时写入架构，运行时不再调用 uname（避免 LD_LIBRARY_PATH 下 Illegal instruction）
+  local webkit_lib_arch
+  webkit_lib_arch="$(kylin_multilib_dir)"
 
   if [[ "$use_relative" == "1" ]]; then
     cat > "$output" <<EOF
@@ -108,9 +122,9 @@ HERE="\$(CDPATH= cd -- "\$(dirname "\$0")" && pwd)"
 APP_ROOT="\$HERE"
 MAIN_BIN="$main_bin"
 LD_LINUX="$ld_linux"
+WEBKIT_LIB_ARCH="$webkit_lib_arch"
 LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export PATH="\$APP_ROOT/usr/bin:\${PATH:-/usr/bin:/bin}"
-export LD_LIBRARY_PATH="\$LIBPATH"
 export XDG_DATA_DIRS="\$APP_ROOT/usr/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
@@ -131,13 +145,9 @@ unset WAYLAND_DISPLAY
 unset LD_PRELOAD
 
 kylin_prepare_runtime() {
-  case "\$(uname -m)" in
-    aarch64|arm64) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
-    x86_64|amd64) WEBKIT_LIB_ARCH=x86_64-linux-gnu ;;
-    *) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
-  esac
   export WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
   export APPDIR="\$APP_ROOT"
+  export LD_LIBRARY_PATH="\$LIBPATH"
   cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
 }
 
@@ -176,7 +186,6 @@ else
   {
     echo "=== \$(date '+%Y-%m-%d %H:%M:%S') 启动 ==="
     echo "DISPLAY=\$DISPLAY APP_ROOT=\$APP_ROOT MAIN_BIN=\$MAIN_BIN"
-    echo "INTERP=\$(readelf -l "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null | grep 'Requesting program interpreter' || true)"
     if "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"; then
       echo "=== 正常退出 ==="
     else
@@ -194,9 +203,9 @@ EOF
 APP_ROOT="$app_root"
 MAIN_BIN="$main_bin"
 LD_LINUX="$ld_linux"
+WEBKIT_LIB_ARCH="$webkit_lib_arch"
 LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
 export PATH="\$APP_ROOT/usr/bin:\${PATH:-/usr/bin:/bin}"
-export LD_LIBRARY_PATH="\$LIBPATH"
 export XDG_DATA_DIRS="\$APP_ROOT/usr/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
@@ -217,13 +226,9 @@ unset WAYLAND_DISPLAY
 unset LD_PRELOAD
 
 kylin_prepare_runtime() {
-  case "\$(uname -m)" in
-    aarch64|arm64) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
-    x86_64|amd64) WEBKIT_LIB_ARCH=x86_64-linux-gnu ;;
-    *) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
-  esac
   export WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
   export APPDIR="\$APP_ROOT"
+  export LD_LIBRARY_PATH="\$LIBPATH"
   cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
 }
 
@@ -262,7 +267,6 @@ else
   {
     echo "=== \$(date '+%Y-%m-%d %H:%M:%S') 启动 ==="
     echo "DISPLAY=\$DISPLAY APP_ROOT=\$APP_ROOT MAIN_BIN=\$MAIN_BIN"
-    echo "INTERP=\$(readelf -l "\$APP_ROOT/usr/bin/\$MAIN_BIN" 2>/dev/null | grep 'Requesting program interpreter' || true)"
     if "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"; then
       echo "=== 正常退出 ==="
     else
@@ -283,14 +287,17 @@ kylin_write_debug_launcher() {
   local app_root="$2"
   local main_bin="$3"
   local ld_linux="$4"
+  local webkit_lib_arch
+  webkit_lib_arch="$(kylin_multilib_dir)"
 
   cat > "$output" <<EOF
 #!/bin/sh
+# qms-debug：诊断阶段绝不设置 LD_LIBRARY_PATH，否则 uname/objdump 等会 Illegal instruction
 APP_ROOT="$app_root"
 MAIN_BIN="$main_bin"
 LD_LINUX="$ld_linux"
+WEBKIT_LIB_ARCH="$webkit_lib_arch"
 LIBPATH="\$APP_ROOT/usr/lib/glibc-compat:\$APP_ROOT/usr/lib"
-export LD_LIBRARY_PATH="\$LIBPATH"
 export DISPLAY="\${DISPLAY:-:0}"
 export GDK_BACKEND=x11
 export GTK_USE_PORTAL=0
@@ -307,23 +314,16 @@ export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 export GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
 unset LD_PRELOAD
+unset LD_LIBRARY_PATH
 
-kylin_prepare_runtime() {
-  case "\$(uname -m)" in
-    aarch64|arm64) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
-    x86_64|amd64) WEBKIT_LIB_ARCH=x86_64-linux-gnu ;;
-    *) WEBKIT_LIB_ARCH=aarch64-linux-gnu ;;
-  esac
-  export WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
-  export APPDIR="\$APP_ROOT"
-  cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
-}
+WEBKIT_EXEC_PATH="\$APP_ROOT/usr/lib/\$WEBKIT_LIB_ARCH/webkit2gtk-4.1"
 
+# 纯文本扫描 .so，不加载 ELF（兼容任意麒麟 CPU）
 kylin_sym_ok() {
-  # 清空 LD_LIBRARY_PATH，避免系统 objdump/nm/readelf 加载 bundled 库导致 Illegal instruction
-  LD_LIBRARY_PATH= objdump -T "\$1" 2>/dev/null | grep -Fq "\$2" && return 0
-  LD_LIBRARY_PATH= nm -D --defined-only "\$1" 2>/dev/null | grep -Fq "\$2" && return 0
-  LD_LIBRARY_PATH= readelf --dyn-syms "\$1" 2>/dev/null | grep -Fq "\$2" && return 0
+  _lib="\$1"
+  _sym="\$2"
+  [ -f "\$_lib" ] || return 1
+  grep -aFq "\$_sym" "\$_lib" 2>/dev/null && return 0
   return 1
 }
 
@@ -331,19 +331,20 @@ echo "=== QMS 启动诊断 ==="
 echo "APP_ROOT=\$APP_ROOT"
 echo "MAIN_BIN=\$MAIN_BIN"
 echo "LIBPATH=\$LIBPATH"
+echo "WEBKIT_EXEC_PATH=\$WEBKIT_EXEC_PATH"
 echo
 echo "=== 内置 WebKit 运行时库 ==="
+_launch_ok=1
 for lib in libfreetype.so.6 libgbm.so.1 libdrm.so.2 libwebkit2gtk-4.1.so.0 libgtk-3.so.0 libglib-2.0.so.0; do
   if [ -f "\$APP_ROOT/usr/lib/\$lib" ]; then
     echo "  已内置: \$lib"
   else
     echo "  缺少: \$lib"
+    _launch_ok=0
   fi
 done
 echo
-_launch_ok=1
 echo "=== WebKit 子进程 ==="
-kylin_prepare_runtime
 for helper in WebKitNetworkProcess WebKitWebProcess; do
   if [ -f "\$WEBKIT_EXEC_PATH/\$helper" ]; then
     echo "  已内置: \$helper"
@@ -355,11 +356,10 @@ done
 if [ -f "\$WEBKIT_EXEC_PATH/WebKitGPUProcess" ]; then
   echo "  已内置: WebKitGPUProcess"
 else
-  echo "  可选: WebKitGPUProcess（软件渲染模式下可缺失）"
+  echo "  可选: WebKitGPUProcess（软件渲染可缺失）"
 fi
-echo "WEBKIT_EXEC_PATH=\$WEBKIT_EXEC_PATH"
 echo
-echo "=== FreeType / GBM 符号 ==="
+echo "=== FreeType / GBM 符号（grep 静态扫描）==="
 if [ -f "\$APP_ROOT/usr/lib/libfreetype.so.6" ]; then
   if kylin_sym_ok "\$APP_ROOT/usr/lib/libfreetype.so.6" FT_Get_Color_Glyph_Paint; then
     echo "  libfreetype OK"
@@ -383,25 +383,18 @@ else
   _launch_ok=0
 fi
 echo
-echo "=== 子进程 loader 检查 ==="
-_helper="\$WEBKIT_EXEC_PATH/WebKitNetworkProcess"
-if [ -f "\$_helper" ]; then
-  _interp="\$(readelf -l "\$_helper" 2>/dev/null | awk '/Requesting program interpreter/ { gsub(/[][]/, "", \$NF); print \$NF; exit }')"
-  if [ -n "\$_interp" ]; then
-    echo "  WebKitNetworkProcess interpreter: \$_interp"
-    if [ ! -f "\$_interp" ]; then
-      echo "  错误：子进程 loader 不存在（Linux 会报「没有那个文件或目录」）" >&2
-      _launch_ok=0
-    fi
-  fi
+echo "=== loader 检查 ==="
+if [ -f "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" ]; then
+  echo "  bundled loader OK: \$LD_LINUX"
+  chmod +x "\$APP_ROOT/usr/lib/glibc-compat/\$LD_LINUX" 2>/dev/null || true
 else
-  echo "  错误：缺少 WebKitNetworkProcess: \$_helper" >&2
+  echo "  错误：缺少 bundled loader" >&2
   _launch_ok=0
 fi
 echo
 if [ "\${_launch_ok:-1}" = "0" ]; then
   echo "=== 诊断未通过，跳过启动 ===" >&2
-  echo "请重新安装最新 deb 包（需含 WebKit 子进程与新版 FreeType/GBM）。" >&2
+  echo "请重新安装最新 deb 包（需含 WebKit 子进程与 Ubuntu 22.04 FreeType/GBM）。" >&2
   exit 1
 fi
 if [ -n "\${QMS_DEBUG_NO_LAUNCH:-}" ]; then
@@ -409,7 +402,10 @@ if [ -n "\${QMS_DEBUG_NO_LAUNCH:-}" ]; then
   exit 0
 fi
 echo "=== 尝试启动 ==="
-kylin_prepare_runtime
+export LD_LIBRARY_PATH="\$LIBPATH"
+export WEBKIT_EXEC_PATH
+export APPDIR="\$APP_ROOT"
+cd "\$APP_ROOT/usr" 2>/dev/null || cd "\$APP_ROOT" || exit 1
 exec "\$APP_ROOT/usr/bin/\$MAIN_BIN" "\$@"
 EOF
   chmod 755 "$output"
@@ -453,7 +449,11 @@ kylin_lib_has_dynamic_symbol() {
   local lib="$1"
   local symbol="$2"
   [[ -f "$lib" ]] || return 1
-  # 清空 LD_LIBRARY_PATH：麒麟上若带着 bundled 库路径跑 objdump/nm，会 Illegal instruction
+  # 优先纯文本扫描（不加载 ELF，构建机与麒麟都安全）
+  if grep -aFq "$symbol" "$lib" 2>/dev/null; then
+    return 0
+  fi
+  # 构建机兜底：清空 LD_LIBRARY_PATH 再用 ELF 工具
   if LD_LIBRARY_PATH= objdump -T "$lib" 2>/dev/null | grep -Fq "$symbol"; then
     return 0
   fi
@@ -461,9 +461,6 @@ kylin_lib_has_dynamic_symbol() {
     return 0
   fi
   if LD_LIBRARY_PATH= readelf --dyn-syms "$lib" 2>/dev/null | grep -Fq "$symbol"; then
-    return 0
-  fi
-  if LD_LIBRARY_PATH= readelf -Ws "$lib" 2>/dev/null | grep -Fq "$symbol"; then
     return 0
   fi
   return 1
@@ -757,6 +754,28 @@ kylin_ensure_freetype_for_webkit() {
 
   rm -f "$dest"
 
+  # 优先 Ubuntu 22.04：符号足够，且在旧麒麟 ARM CPU 上比 24.04 更安全
+  echo "  下载 Ubuntu 22.04 libfreetype6（麒麟 CPU 兼容优先）..."
+  if kylin_fetch_jammy_freetype "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 22.04 libfreetype.so.6"
+      return 0
+    fi
+    echo "  警告：Ubuntu 22.04 libfreetype 符号检查仍失败" >&2
+    rm -f "$dest"
+  fi
+
+  echo "  尝试 apt-get download libfreetype6..."
+  if kylin_fetch_freetype_via_apt "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_freetype_has_webkit_symbol "$dest"; then
+      echo "  已使用 apt 下载的 libfreetype.so.6"
+      return 0
+    fi
+    rm -f "$dest"
+  fi
+
   lib_path="$(kylin_freetype_from_webkit_ldd "$app_dir" || true)"
   if [[ -n "$lib_path" ]]; then
     echo "  内置 libfreetype.so.6（WebKit ldd）<- $lib_path"
@@ -779,17 +798,7 @@ kylin_ensure_freetype_for_webkit() {
     rm -f "$dest"
   fi
 
-  echo "  尝试 apt-get download libfreetype6..."
-  if kylin_fetch_freetype_via_apt "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
-    if kylin_freetype_has_webkit_symbol "$dest"; then
-      echo "  已使用 apt 下载的 libfreetype.so.6"
-      return 0
-    fi
-    rm -f "$dest"
-  fi
-
-  echo "  下载 Ubuntu 24.04 libfreetype6（WebKit 需要 FT_Get_Color_Glyph_Paint）..."
+  echo "  最后尝试 Ubuntu 24.04 libfreetype6..."
   if kylin_fetch_noble_freetype "$app_dir/usr/lib"; then
     kylin_bundle_single_lib_deps "$dest" "$app_dir"
     if kylin_freetype_has_webkit_symbol "$dest"; then
@@ -797,17 +806,6 @@ kylin_ensure_freetype_for_webkit() {
       return 0
     fi
     echo "  警告：Ubuntu 24.04 libfreetype 符号检查仍失败" >&2
-    rm -f "$dest"
-  fi
-
-  echo "  尝试 Ubuntu 22.04 libfreetype6..."
-  if kylin_fetch_jammy_freetype "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
-    if kylin_freetype_has_webkit_symbol "$dest"; then
-      echo "  已使用 Ubuntu 22.04 libfreetype.so.6"
-      return 0
-    fi
-    echo "  警告：Ubuntu 22.04 libfreetype 符号检查仍失败" >&2
   fi
 
   echo "错误：无法获取含 FT_Get_Color_Glyph_Paint 的 libfreetype.so.6" >&2
@@ -825,6 +823,17 @@ kylin_ensure_gbm_for_webkit() {
   fi
 
   rm -f "$dest" "$app_dir/usr/lib/libdrm.so.2"
+
+  # 只用 Ubuntu 22.04 GBM：24.04 在部分麒麟 ARM CPU 上会 Illegal instruction
+  echo "  下载 Ubuntu 22.04 libgbm1 + libdrm2..."
+  if kylin_fetch_jammy_gbm_stack "$app_dir/usr/lib"; then
+    kylin_bundle_single_lib_deps "$dest" "$app_dir"
+    if kylin_gbm_has_webkit_symbol "$dest"; then
+      echo "  已使用 Ubuntu 22.04 libgbm.so.1"
+      return 0
+    fi
+    rm -f "$dest"
+  fi
 
   lib_path="$(kylin_webkit_ldd_lib_path "$app_dir" 'libgbm\.so' || true)"
   if [[ -n "$lib_path" ]]; then
@@ -846,16 +855,7 @@ kylin_ensure_gbm_for_webkit() {
     rm -f "$dest"
   fi
 
-  echo "  下载 Ubuntu 22.04 libgbm1 + libdrm2（避免 24.04 在部分麒麟 CPU 上 Illegal instruction）..."
-  if kylin_fetch_jammy_gbm_stack "$app_dir/usr/lib"; then
-    kylin_bundle_single_lib_deps "$dest" "$app_dir"
-    if kylin_gbm_has_webkit_symbol "$dest"; then
-      echo "  已使用 Ubuntu 22.04 libgbm.so.1"
-      return 0
-    fi
-  fi
-
-  echo "错误：无法获取含 gbm_bo_create_with_modifiers2 的 libgbm.so.1（已跳过 Ubuntu 24.04 GBM 以防 CPU 不兼容）" >&2
+  echo "错误：无法获取含 gbm_bo_create_with_modifiers2 的 libgbm.so.1" >&2
   return 1
 }
 
@@ -875,17 +875,6 @@ kylin_ensure_gtk_glib_bundled() {
       echo "  已补全: $lib_name"
     fi
   done
-}
-
-kylin_multilib_dir() {
-  case "${1:-$(uname -m)}" in
-    aarch64|arm64) echo "aarch64-linux-gnu" ;;
-    x86_64|amd64) echo "x86_64-linux-gnu" ;;
-    *)
-      echo "错误：不支持的架构 \"${1:-$(uname -m)}\"" >&2
-      return 1
-      ;;
-  esac
 }
 
 kylin_webkit_helper_dir() {

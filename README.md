@@ -1,100 +1,79 @@
 # 报到取号
 
-面向营业厅现场终端的桌面取号应用，支持预约取号与现场取号，集成身份证读卡与小票打印能力。前端基于 Vue 3 + Vite，桌面端基于 Electron 打包（自带 Chromium，适配银河麒麟 glibc 2.31，无需 WebKitGTK 4.1）。
+营业厅现场终端桌面取号应用（预约取号 / 现场取号）。  
+技术栈：Vue 3 + Vite + Electron（自带 Chromium，可直接在银河麒麟等 glibc 2.31 环境运行，无需 WebKitGTK）。
 
-## 技术栈
+---
 
-| 类别 | 技术 |
-|------|------|
-| 前端框架 | Vue 3（`<script setup>`） |
-| 构建工具 | Vite 8 |
-| 样式 | Tailwind CSS 4 |
-| 桌面端 | Electron |
-| HTTP 请求 | 开发模式走 Vite 代理；生产包走 Electron 主进程请求 |
-| 虚拟键盘 | simple-keyboard + 拼音候选 |
-| 语言 | JavaScript / TypeScript |
+## 环境准备
 
-## 功能说明
-
-- **预约取号**：刷身份证或输入手机号查询预约并取号
-- **现场取号**：填写信息、选择业务类型后获取排队号
-- **身份证读卡**：调用后端读卡接口，或宿主注入的 `window.IdCardReader`
-- **应用内虚拟键盘**：触屏终端支持中文拼音、英文、数字输入（可配置强制使用，跳过系统键盘）
-- **全屏展示**：默认 1280×1024 全屏窗口，适合自助终端使用
-
-## 环境要求
-
-- **Node.js**：建议 20+（可用 `nvm use` 配合 `.nvmrc`）
-- **npm**：随 Node.js 安装即可
-- **无需 Rust / WebKitGTK 开发包**
-
-### 外部服务
-
-| 服务 | 默认地址（开发） | 说明 |
-|------|------------------|------|
-| 排队后端 API | `http://localhost:18084` | 预约查询、现场取号、读卡等接口 |
-| 开发代理前缀 | `/api` | 仅 `npm run dev` / `electron:dev` 时由 Vite 转发 |
-
-## 快速开始
-
-### 1. 安装依赖
+- Node.js 20+（可用 `nvm use`）
+- npm 10+
 
 ```bash
 npm install
 ```
 
-### 2. 配置环境变量
+---
 
-| 文件 | 用途 |
-|------|------|
-| `.env.development` | 本地开发 |
-| `.env.test` | 测试环境构建 |
-| `.env.production` | 生产环境构建 |
-
-主要变量：
+## 本地开发（可选）
 
 ```bash
-VITE_API_BASE_URL=/api
-VITE_API_TARGET=http://localhost:18084
-VITE_API_PROXY_REWRITE=false
-VITE_GATEWAY_ID=Eq032511250004
-VITE_FORCE_ON_SCREEN_KEYBOARD=true
-VITE_APP_DEBUG=true
-```
-
-### 3. 生产部署配置（config.json）
-
-打包后的桌面应用**优先读取安装目录下的 `config.json`**。首次启动若不存在，会从 `config.example.json` 自动生成。
-
-```json
-{
-  "apiBaseUrl": "http://192.168.0.101:18084/api",
-  "gatewayId": "",
-  "forceOnScreenKeyboard": true
-}
-```
-
-## 启动命令
-
-### 仅启动前端（浏览器）
-
-```bash
+# 仅浏览器
 npm run dev
-```
 
-访问 <http://127.0.0.1:5173>
-
-### 启动 Electron 桌面应用（推荐）
-
-```bash
+# Electron 桌面联调（推荐）
 npm run electron:dev
 ```
 
-会先启动 Vite，再打开 Electron 窗口。
+---
 
-## 打包命令
+## 打包说明
 
-### 仅构建前端
+打包会先执行前端生产构建（`dist/`），再用 electron-builder 生成安装包，产物在 `release/`。
+
+| 命令 | 产物 | 适用场景 |
+|------|------|----------|
+| `npm run electron:build:linux:arm64` | `报到取号-<版本>-arm64.deb` | **银河麒麟 ARM64（推荐）** |
+| `npm run electron:build:linux:amd64` | `报到取号-<版本>-x64.deb` | Linux x64 |
+| `npm run electron:build:win` | `报到取号-<版本>-Setup.exe` | Windows |
+| `npm run electron:build` | 按当前系统默认目标 | 本机快速试打包 |
+
+### 1. 打包麒麟 ARM64 deb（最常用）
+
+**推荐用 GitHub Actions**（本机若是 macOS / x64，交叉打 ARM64 Linux 包容易失败）：
+
+1. 打开仓库 **Actions** → **Build Electron ARM64 DEB**
+2. 点击 **Run workflow**
+3. 完成后下载 artifact：`electron-arm64-deb`
+4. 得到类似：`报到取号-0.1.0-arm64.deb`
+
+若已在 **ARM64 Linux** 机器上开发，也可本地执行：
+
+```bash
+npm install
+npm run electron:build:linux:arm64
+```
+
+产物路径：`release/报到取号-*-arm64.deb`
+
+### 2. 打包 Linux amd64 deb
+
+```bash
+npm run electron:build:linux:amd64
+```
+
+### 3. 打包 Windows 安装包
+
+在 Windows 或可构建 Windows 目标的环境执行：
+
+```bash
+npm run electron:build:win
+```
+
+产物：`release/报到取号-*-Setup.exe`
+
+### 4. 仅构建前端（不打包安装包）
 
 ```bash
 npm run build:prod
@@ -102,68 +81,76 @@ npm run build:prod
 
 产物：`dist/`
 
-### 打包桌面安装包
+---
+
+## 麒麟终端安装与配置
+
+### 安装
 
 ```bash
-# 本机默认目标
-npm run electron:build
-
-# 银河麒麟 ARM64 deb（推荐在 ARM64 Linux / GitHub Actions 上执行）
-npm run electron:build:linux:arm64
-
-# Linux amd64 deb
-npm run electron:build:linux:amd64
-
-# Windows 安装包
-npm run electron:build:win
+sudo dpkg -i 报到取号-0.1.0-arm64.deb
+# 若提示依赖问题：
+sudo apt-get install -f -y
 ```
 
-产物目录：`release/`
-
-### GitHub Actions
-
-仓库工作流 **Build Electron ARM64 DEB**（`workflow_dispatch`）会在 `ubuntu-22.04-arm` 上产出 ARM64 `.deb` artifact。
-
-### 麒麟终端安装
+启动：
 
 ```bash
-sudo dpkg -i 报到取号-*.deb
-# 如有依赖提示：
-sudo apt install -f -y
+qms
 ```
 
-安装后可执行命令一般为 `qms`，或从应用菜单打开「报到取号」。
+或从应用菜单打开「报到取号」。
 
-在安装目录旁编辑 `config.json`（与可执行文件同目录，或按发行版路径查找），设置后端 `apiBaseUrl`。
+### 配置后端地址
 
-Electron 自带 Chromium，**不依赖** 系统 `libwebkit2gtk-4.1`，也无需 glibc-compat 重打包。
+生产包通过本地 `config.json` 的 **`apiBaseUrl`** 访问后端。
 
-## 项目结构
+常见路径（以实际安装目录为准，多为 `/opt/报到取号/`）：
 
+```bash
+# 查看安装文件
+dpkg -L qms | head
+
+# 写入 / 修改配置（无 nano 时可用）
+sudo tee /opt/报到取号/config.json >/dev/null <<'EOF'
+{
+  "apiBaseUrl": "http://192.168.0.101:18084/api",
+  "gatewayId": "",
+  "forceOnScreenKeyboard": true
+}
+EOF
 ```
-queueManagement-display/
-├── src/                 # Vue 前端
-├── electron/
-│   ├── main.cjs         # Electron 主进程（窗口 / IPC / HTTP / TabTip）
-│   └── preload.cjs      # 预加载桥 window.qms
-├── config.example.json
-├── vite.config.js
-└── package.json
-```
 
-## 常用脚本
+也可用应用内入口：
 
-| 命令 | 说明 |
-|------|------|
-| `npm run dev` | Vite 开发服务器 |
-| `npm run electron:dev` | Electron + Vite 联调 |
-| `npm run build:prod` | 构建前端 |
-| `npm run electron:build:linux:arm64` | 打包麒麟 ARM64 deb |
-| `npm run electron:build:win` | 打包 Windows NSIS |
+1. 屏幕**左上角**约 2.5 秒内连点 5 次  
+2. 输入验证密码（当前年份倒序，如 2026 → `6202`）  
+3. 修改 `apiBaseUrl`，勾选是否开机自启后保存  
+
+改完后应用会刷新并按新地址请求。
+
+### 退出应用
+
+屏幕**右上角**连点 5 次 → 同样年份倒序密码 → 确认退出。
+
+---
 
 ## 注意事项
 
-1. 开发服务器固定 `5173` 端口。
-2. 生产包 API 地址优先改安装目录 `config.json` 的 `apiBaseUrl`。
-3. 触屏终端建议 `forceOnScreenKeyboard: true`；Windows 未强制时会尝试 TabTip。
-4. 按 F12 可在 Electron 生产包中开关 DevTools。
+1. 打麒麟 ARM64 包请优先用 Actions 的 `ubuntu-22.04-arm`，避免在 Intel Mac 上硬交叉编译。
+2. 打包脚本已带 `--publish never`，不会上传 GitHub Release，只需下载 Actions artifact 或取 `release/` 目录文件。
+3. Electron 自带 Chromium，**不需要**系统安装 `libwebkit2gtk-4.1`，也无需旧的 glibc-compat 重打包流程。
+4. 生产环境不要依赖打包时的 `VITE_API_BASE_URL`；现场以 `config.json` / 应用内设置为准。
+5. 按 **F12** 可开关 DevTools，便于现场排查。
+
+---
+
+## 常用脚本一览
+
+| 命令 | 说明 |
+|------|------|
+| `npm run electron:dev` | 开发联调 |
+| `npm run electron:build:linux:arm64` | 打包麒麟 ARM64 deb |
+| `npm run electron:build:linux:amd64` | 打包 Linux x64 deb |
+| `npm run electron:build:win` | 打包 Windows 安装包 |
+| `npm run build:prod` | 仅构建前端 |

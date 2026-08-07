@@ -41,6 +41,7 @@ interface QmsBridge {
   isElectron: true
   platform: NodeJS.Platform | string
   loadRuntimeConfig(): Promise<QmsRuntimeConfig>
+  saveRuntimeConfig(partial: QmsRuntimeConfig): Promise<QmsRuntimeConfig>
   httpFetch(payload: {
     url: string
     method?: string
@@ -51,6 +52,7 @@ interface QmsBridge {
   warmUpTouchKeyboard(): Promise<boolean>
   toggleDevtools(): Promise<boolean>
   openExternal(url: string): Promise<boolean>
+  quitApp(): Promise<boolean>
 }
 
 interface Window {

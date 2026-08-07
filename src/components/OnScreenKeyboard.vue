@@ -104,7 +104,7 @@ onUnmounted(teardownKeyboardOutsideDismiss)
   <Teleport to="body">
     <div
       v-if="onScreenKeyboardVisible"
-      class="keyboard-shell pointer-events-none fixed inset-x-0 bottom-0 z-[9999]"
+      class="keyboard-shell pointer-events-none fixed inset-x-0 bottom-0 z-[10050]"
     >
       <div
         class="keyboard-panel pointer-events-auto mx-auto w-full max-w-3xl px-3 pb-3 pt-2"

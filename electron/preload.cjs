@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld('qms', {
     return ipcRenderer.invoke('qms:load-runtime-config')
   },
 
+  saveRuntimeConfig(partial) {
+    return ipcRenderer.invoke('qms:save-runtime-config', partial)
+  },
+
   httpFetch(payload) {
     return ipcRenderer.invoke('qms:http-fetch', payload)
   },
@@ -26,5 +30,11 @@ contextBridge.exposeInMainWorld('qms', {
 
   openExternal(url) {
     return ipcRenderer.invoke('qms:open-external', url)
+  },
+
+  quitApp() {
+    // 退出后进程会结束，无需等待；send 比 invoke 更不容易因通道销毁报错
+    ipcRenderer.send('qms:quit-app')
+    return Promise.resolve(true)
   },
 })

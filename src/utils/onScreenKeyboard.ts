@@ -30,8 +30,27 @@ let outsideDismissInstalled = false
 let lockedScrollY = 0
 
 function resolveKeyboardType(
-  _input: HTMLInputElement | HTMLTextAreaElement
+  input: HTMLInputElement | HTMLTextAreaElement
 ): OnScreenKeyboardType {
+  const fromData = input.dataset.keyboardType
+  if (
+    fromData === 'number' ||
+    fromData === 'english' ||
+    fromData === 'chinese'
+  ) {
+    return fromData
+  }
+
+  if (
+    input instanceof HTMLInputElement &&
+    (input.inputMode === 'numeric' ||
+      input.inputMode === 'decimal' ||
+      input.type === 'tel' ||
+      input.type === 'number')
+  ) {
+    return 'number'
+  }
+
   return 'chinese'
 }
 

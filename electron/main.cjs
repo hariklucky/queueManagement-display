@@ -22,6 +22,14 @@ function getInstallDir() {
   return path.dirname(app.getPath('exe'))
 }
 
+function getInstallConfigPath() {
+  return path.join(getInstallDir(), 'config.json')
+}
+
+function getUserDataConfigPath() {
+  return path.join(app.getPath('userData'), 'config.json')
+}
+
 function getExampleConfigPath() {
   const candidates = [
     path.join(process.resourcesPath || '', 'config.example.json'),
@@ -31,9 +39,23 @@ function getExampleConfigPath() {
   return candidates.find((p) => fs.existsSync(p)) || null
 }
 
+function readJsonConfig(configPath) {
+  if (!configPath || !fs.existsSync(configPath)) {
+    return null
+  }
+
+  try {
+    const raw = fs.readFileSync(configPath, 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch (error) {
+    console.warn('[QMS] 解析 config.json 失败', configPath, error)
+    return null
+  }
+}
+
 function ensureRuntimeConfig() {
-  const installDir = getInstallDir()
-  const configPath = path.join(installDir, 'config.json')
+  const configPath = getInstallConfigPath()
   if (fs.existsSync(configPath)) {
     return configPath
   }
@@ -54,19 +76,37 @@ function ensureRuntimeConfig() {
 }
 
 function loadRuntimeConfig() {
-  const configPath = ensureRuntimeConfig()
-  if (!configPath || !fs.existsSync(configPath)) {
-    return {}
+  // 应用内修改优先写入 userData，读取时优先使用
+  const userDataConfig = readJsonConfig(getUserDataConfigPath())
+  if (userDataConfig) {
+    return userDataConfig
   }
 
-  try {
-    const raw = fs.readFileSync(configPath, 'utf8')
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch (error) {
-    console.warn('[QMS] 解析 config.json 失败', error)
-    return {}
+  const configPath = ensureRuntimeConfig()
+  return readJsonConfig(configPath) || {}
+}
+
+function saveRuntimeConfig(partial) {
+  const patch = partial && typeof partial === 'object' ? partial : {}
+  const next = {
+    ...loadRuntimeConfig(),
+    ...patch,
   }
+
+  const payload = `${JSON.stringify(next, null, 2)}\n`
+  const userDataPath = getUserDataConfigPath()
+  const installPath = getInstallConfigPath()
+
+  fs.mkdirSync(path.dirname(userDataPath), { recursive: true })
+  fs.writeFileSync(userDataPath, payload, 'utf8')
+
+  try {
+    fs.writeFileSync(installPath, payload, 'utf8')
+  } catch (error) {
+    console.warn('[QMS] 无法写入安装目录 config.json，已保存到用户目录', error)
+  }
+
+  return next
 }
 
 function createWindow() {
@@ -185,6 +225,14 @@ function warmUpTouchKeyboard() {
 function registerIpc() {
   ipcMain.handle('qms:load-runtime-config', () => loadRuntimeConfig())
 
+  ipcMain.handle('qms:save-runtime-config', (_event, partial) => {
+    try {
+      return saveRuntimeConfig(partial)
+    } catch (error) {
+      throw new Error(error?.message || String(error))
+    }
+  })
+
   ipcMain.handle('qms:http-fetch', async (_event, payload) => {
     try {
       return await nativeHttpFetch(payload || {})
@@ -217,6 +265,38 @@ function registerIpc() {
       return true
     }
     return false
+  })
+
+  ipcMain.handle('qms:quit-app', () => {
+    scheduleAppQuit()
+    return true
+  })
+
+  ipcMain.on('qms:quit-app', () => {
+    scheduleAppQuit()
+  })
+}
+
+function scheduleAppQuit() {
+  // 延迟到当前 IPC 回包之后，避免渲染进程误报退出失败
+  setImmediate(() => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        win.removeAllListeners('close')
+        if (!win.isDestroyed()) {
+          win.destroy()
+        }
+      } catch (error) {
+        console.warn('[QMS] 销毁窗口失败', error)
+      }
+    }
+    mainWindow = null
+    try {
+      app.exit(0)
+    } catch (error) {
+      console.warn('[QMS] app.exit 失败，改用 process.exit', error)
+      process.exit(0)
+    }
   })
 }
 

@@ -74,6 +74,29 @@ export function getApiBaseURL() {
   return apiBaseURL ?? resolveEnvBaseURL()
 }
 
+export async function saveApiBaseUrl(nextUrl: string) {
+  const trimmed = nextUrl.trim()
+  if (!trimmed) {
+    throw new Error('请输入后端请求地址')
+  }
+
+  const normalized = normalizeBaseURL(trimmed)
+  if (!/^https?:\/\//i.test(normalized)) {
+    throw new Error('请输入以 http:// 或 https:// 开头的完整地址，例如 http://192.168.0.101:18084/api')
+  }
+
+  if (isElectron() && window.qms?.saveRuntimeConfig) {
+    runtimeConfig = await window.qms.saveRuntimeConfig({ apiBaseUrl: normalized })
+  } else {
+    runtimeConfig = { ...runtimeConfig, apiBaseUrl: normalized }
+  }
+
+  apiBaseURL = normalized
+  initialized = true
+  console.info('[QMS] 已更新 apiBaseUrl:', apiBaseURL)
+  return apiBaseURL
+}
+
 export function getRuntimeGatewayId() {
   return runtimeConfig.gatewayId?.trim() || ''
 }

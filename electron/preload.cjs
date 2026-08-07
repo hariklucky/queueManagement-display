@@ -37,4 +37,12 @@ contextBridge.exposeInMainWorld('qms', {
     ipcRenderer.send('qms:quit-app')
     return Promise.resolve(true)
   },
+
+  getAutoLaunch() {
+    return ipcRenderer.invoke('qms:get-auto-launch')
+  },
+
+  setAutoLaunch(enabled) {
+    return ipcRenderer.invoke('qms:set-auto-launch', enabled)
+  },
 })

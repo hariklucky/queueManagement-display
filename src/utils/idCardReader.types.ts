@@ -48,7 +48,11 @@ export interface IdCardReadApiData {
 export interface IdCardReadApiResponse {
   msg?: string
   code?: number
-  data?: IdCardReadApiData
+  /** 读卡业务结果：-1 表示未读到/失败，可提示用户重试 */
+  result?: number | string
+  data?: IdCardReadApiData & {
+    result?: number | string
+  }
 }
 
 /** 标准化后的身份证信息 */

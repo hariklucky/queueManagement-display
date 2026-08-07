@@ -275,6 +275,29 @@ function registerIpc() {
   ipcMain.on('qms:quit-app', () => {
     scheduleAppQuit()
   })
+
+  ipcMain.handle('qms:get-auto-launch', () => {
+    const capability = getAutoLaunchCapability()
+    return {
+      enabled: isAutoLaunchEnabled(),
+      supported: capability.supported,
+      message: capability.message,
+    }
+  })
+
+  ipcMain.handle('qms:set-auto-launch', (_event, enabled) => {
+    try {
+      const next = setAutoLaunchEnabled(enabled)
+      const capability = getAutoLaunchCapability()
+      return {
+        enabled: next,
+        supported: capability.supported,
+        message: capability.message,
+      }
+    } catch (error) {
+      throw new Error(error?.message || String(error))
+    }
+  })
 }
 
 function scheduleAppQuit() {
@@ -300,8 +323,141 @@ function scheduleAppQuit() {
   })
 }
 
+function getLinuxAutostartPath() {
+  return path.join(app.getPath('home'), '.config', 'autostart', 'qms.desktop')
+}
+
+function escapeDesktopExec(execPath) {
+  // .desktop Exec 中含空格/中文路径时需加引号
+  if (/[\s"'\\]/.test(execPath)) {
+    return `"${execPath.replace(/"/g, '\\"')}"`
+  }
+  return execPath
+}
+
+function getAutoLaunchCapability() {
+  if (process.platform === 'linux') {
+    return { supported: true, message: '' }
+  }
+
+  // macOS 登录项依赖签名/公证；开发态 electron . 基本会被系统拒绝
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    return {
+      supported: false,
+      message:
+        '当前为 macOS 开发模式，系统不允许写入登录项。请使用签名打包后的应用设置开机启动。',
+    }
+  }
+
+  if (process.platform === 'darwin') {
+    return {
+      supported: true,
+      message: 'macOS 需对应用签名并公证后，开机启动才会真正生效。',
+    }
+  }
+
+  return { supported: true, message: '' }
+}
+
+function isAutoLaunchEnabled() {
+  if (process.platform === 'linux') {
+    return fs.existsSync(getLinuxAutostartPath())
+  }
+
+  try {
+    return Boolean(app.getLoginItemSettings().openAtLogin)
+  } catch (error) {
+    console.warn('[QMS] 读取开机启动状态失败', error)
+    return false
+  }
+}
+
+function setAutoLaunchEnabled(enabled) {
+  const next = Boolean(enabled)
+  const capability = getAutoLaunchCapability()
+
+  if (!capability.supported) {
+    throw new Error(capability.message || '当前环境不支持设置开机启动')
+  }
+
+  if (process.platform === 'linux') {
+    const desktopPath = getLinuxAutostartPath()
+    if (next) {
+      fs.mkdirSync(path.dirname(desktopPath), { recursive: true })
+      const execLine = escapeDesktopExec(process.execPath)
+      const content = [
+        '[Desktop Entry]',
+        'Type=Application',
+        'Version=1.0',
+        'Name=报到取号',
+        'Comment=营业厅报到取号终端',
+        `Exec=${execLine}`,
+        'Terminal=false',
+        'Categories=Utility;',
+        'X-GNOME-Autostart-enabled=true',
+        'X-KDE-autostart-after=panel',
+        '',
+      ].join('\n')
+      fs.writeFileSync(desktopPath, content, 'utf8')
+    } else if (fs.existsSync(desktopPath)) {
+      fs.unlinkSync(desktopPath)
+    }
+
+    const actual = isAutoLaunchEnabled()
+    if (actual !== next) {
+      throw new Error('Linux 开机启动配置写入失败，请检查 ~/.config/autostart 权限')
+    }
+    return actual
+  }
+
+  // macOS 不要强行传 path（开发态会指向 Electron 本体，系统直接拒绝）
+  try {
+    if (process.platform === 'darwin') {
+      app.setLoginItemSettings({ openAtLogin: next })
+    } else {
+      app.setLoginItemSettings({
+        openAtLogin: next,
+        path: process.execPath,
+      })
+    }
+  } catch (error) {
+    throw new Error(error?.message || String(error) || '写入登录项失败')
+  }
+
+  const actual = isAutoLaunchEnabled()
+  if (actual !== next) {
+    throw new Error(
+      process.platform === 'darwin'
+        ? '开机启动未生效：macOS 拒绝写入登录项（开发模式或未签名应用常见）。可到「系统设置 → 通用 → 登录项」手动添加。'
+        : '开机启动设置未生效，请检查系统权限后重试',
+    )
+  }
+
+  return actual
+}
+
+function ensureDefaultAutoLaunch() {
+  if (!app.isPackaged) {
+    return
+  }
+
+  const flagPath = path.join(app.getPath('userData'), 'autolaunch-initialized')
+  if (fs.existsSync(flagPath)) {
+    return
+  }
+
+  try {
+    setAutoLaunchEnabled(true)
+    fs.writeFileSync(flagPath, '1\n', 'utf8')
+    console.info('[QMS] 已默认开启开机自动启动')
+  } catch (error) {
+    console.warn('[QMS] 默认开启开机启动失败', error)
+  }
+}
+
 app.whenReady().then(() => {
   ensureRuntimeConfig()
+  ensureDefaultAutoLaunch()
   registerIpc()
   createWindow()
 

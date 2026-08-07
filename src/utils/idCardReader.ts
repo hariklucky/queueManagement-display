@@ -31,12 +31,26 @@ export class ReadIdCardTimeoutError extends Error {
   }
 }
 
+/** 可读卡失败（如 result=-1），应提示用户重新刷卡 */
+export class ReadIdCardRetryableError extends Error {
+  constructor(message = '读取身份证失败，请重新刷卡') {
+    super(message)
+    this.name = 'ReadIdCardRetryableError'
+  }
+}
+
 export function isReadIdCardCancelled(error: unknown) {
   return error instanceof ReadIdCardCancelledError
 }
 
 export function isReadIdCardTimeout(error: unknown) {
   return error instanceof ReadIdCardTimeoutError
+}
+
+export function isReadIdCardRetryable(error: unknown) {
+  return (
+    isReadIdCardTimeout(error) || error instanceof ReadIdCardRetryableError
+  )
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -154,6 +168,12 @@ async function readIdCardFromBridge(signal?: AbortSignal): Promise<IdCardInfo> {
   const data = await window.IdCardReader!.read()
   throwIfAborted(signal)
 
+  if (Number(data.result) === -1) {
+    throw new ReadIdCardRetryableError(
+      data.msg || data.message || '未能读取到身份证信息，请重新刷卡'
+    )
+  }
+
   const idCardInfo = normalizeIdCardInfo(data)
   if (!idCardInfo.name && !idCardInfo.idNumber) {
     throw new Error('未能读取到身份证信息，请将身份证放在读卡器上')
@@ -173,15 +193,29 @@ async function readIdCardFromApi(signal?: AbortSignal): Promise<IdCardInfo> {
 
   throwIfAborted(signal)
 
-  let payload: IdCardReadApiResponse
+  let payload: IdCardReadApiResponse = {}
   try {
     payload = (await response.json()) as IdCardReadApiResponse
   } catch {
+    if (!response.ok) {
+      throw new ReadIdCardRetryableError(
+        `身份证读卡失败（${response.status}），请重新刷卡`
+      )
+    }
     throw new Error('身份证读卡接口返回了非 JSON 数据，请检查后端服务')
   }
 
   if (!response.ok) {
-    throw new Error(payload.msg || '身份证读卡请求失败，请检查设备')
+    throw new ReadIdCardRetryableError(
+      payload.msg || `身份证读卡失败（${response.status}），请重新刷卡`
+    )
+  }
+
+  const businessResult = payload.result ?? payload.data?.result
+  if (Number(businessResult) === -1) {
+    throw new ReadIdCardRetryableError(
+      payload.msg || '未能读取到身份证信息，请重新刷卡'
+    )
   }
 
   if (payload.code !== 0) {

@@ -46,12 +46,26 @@ function waitForAbortSignal(signal: AbortSignal) {
   })
 }
 
+function shouldUseNativeHttp(url: string) {
+  if (!isElectron() || !window.qms?.httpFetch) {
+    return false
+  }
+
+  // 相对路径（如 /api）在开发模式走 Vite 代理，便于 Network 面板调试
+  if (!/^https?:\/\//i.test(url)) {
+    return false
+  }
+
+  // 绝对地址一律走主进程，避免 Vite(5173)→后端(18084) 的 CORS 拦截
+  return true
+}
+
 /**
- * 开发模式：浏览器/Electron 加载 Vite 时走 fetch（代理可见）。
- * 生产 Electron：主进程 net.request，避免 file:// 跨域限制。
+ * 相对 /api：开发模式用浏览器 fetch（经 Vite 代理）。
+ * 绝对 http(s) 地址：Electron 主进程 net.request，避免跨域与 file:// 限制。
  */
 export async function appFetch(input: string, init?: RequestInit): Promise<Response> {
-  if (import.meta.env.DEV || !isElectron() || !window.qms?.httpFetch) {
+  if (!shouldUseNativeHttp(input)) {
     return fetch(input, init)
   }
 

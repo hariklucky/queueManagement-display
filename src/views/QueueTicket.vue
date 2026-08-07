@@ -19,7 +19,7 @@ import type {
 } from "../api/queue.types";
 import {
   isReadIdCardCancelled,
-  isReadIdCardTimeout,
+  isReadIdCardRetryable,
   readIdCard,
 } from "../utils/idCardReader";
 import type { IdCardInfo } from "../utils/idCardReader.types";
@@ -100,6 +100,9 @@ const formTipVisible = ref(false);
 
 let walkinIdCardAbort: AbortController | null = null;
 let appointmentIdCardAbort: AbortController | null = null;
+/** 同步锁：防止触屏连点在 Vue 更新 disabled 前并发进入 */
+let appointmentIdCardStarting = false;
+let walkinIdCardStarting = false;
 let formTipTimer: number | undefined;
 
 function abortWalkinIdCardReadInFlight() {
@@ -479,7 +482,7 @@ async function performAppointmentIdCardRead() {
       return
     }
 
-    if (isReadIdCardTimeout(error)) {
+    if (isReadIdCardRetryable(error)) {
       appointmentIdCardReadTimedOut.value = true
       return
     }
@@ -496,17 +499,30 @@ async function performAppointmentIdCardRead() {
 }
 
 async function handleScanId() {
-  if (scanIdLoading.value) return
+  if (scanIdLoading.value || appointmentIdCardStarting) return
 
-  abortAppointmentIdCardReadInFlight()
+  // 同步上锁，避免触屏连点并发打出两次读卡请求
+  appointmentIdCardStarting = true
+  scanIdLoading.value = true
   closeOnScreenKeyboard()
   activeInputElement.value?.blur()
 
   appointmentIdCardModalVisible.value = true
   appointmentIdCardReadTimedOut.value = false
 
-  await waitForIdCardModalPaint()
-  await performAppointmentIdCardRead()
+  try {
+    await waitForIdCardModalPaint()
+    if (!appointmentIdCardModalVisible.value) {
+      scanIdLoading.value = false
+      return
+    }
+    await performAppointmentIdCardRead()
+  } catch (error) {
+    scanIdLoading.value = false
+    throw error
+  } finally {
+    appointmentIdCardStarting = false
+  }
 }
 
 async function retryAppointmentIdCardRead() {
@@ -584,7 +600,7 @@ async function performWalkinIdCardRead() {
       return
     }
 
-    if (isReadIdCardTimeout(error)) {
+    if (isReadIdCardRetryable(error)) {
       walkinIdCardReadTimedOut.value = true
       return
     }
@@ -600,17 +616,30 @@ async function performWalkinIdCardRead() {
 }
 
 async function handleScanIdWalkin() {
-  if (scanWalkinLoading.value) return
+  if (scanWalkinLoading.value || walkinIdCardStarting) return
 
-  abortWalkinIdCardReadInFlight()
+  // 同步上锁，避免触屏连点并发打出两次读卡请求
+  walkinIdCardStarting = true
+  scanWalkinLoading.value = true
   closeOnScreenKeyboard()
   activeInputElement.value?.blur()
 
   walkinIdCardModalVisible.value = true
   walkinIdCardReadTimedOut.value = false
 
-  await waitForIdCardModalPaint()
-  await performWalkinIdCardRead()
+  try {
+    await waitForIdCardModalPaint()
+    if (!walkinIdCardModalVisible.value) {
+      scanWalkinLoading.value = false
+      return
+    }
+    await performWalkinIdCardRead()
+  } catch (error) {
+    scanWalkinLoading.value = false
+    throw error
+  } finally {
+    walkinIdCardStarting = false
+  }
 }
 
 async function retryWalkinIdCardRead() {
@@ -769,7 +798,7 @@ async function handleWalkinSubmit() {
                 class="flex items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-gray-300 p-4 disabled:cursor-not-allowed disabled:opacity-70"
                 type="button"
                 :disabled="scanIdLoading"
-                @click="handleScanId"
+                @click.stop="handleScanId"
               >
                 <i class="fas fa-id-card text-xl text-primary"></i>
                 <span class="font-medium text-gray-700">点击刷身份证</span>
@@ -1106,7 +1135,7 @@ async function handleWalkinSubmit() {
             {{
               (walkinIdCardModalVisible && walkinIdCardReadTimedOut) ||
               (appointmentIdCardModalVisible && appointmentIdCardReadTimedOut)
-                ? "10 秒内未读取到身份证信息"
+                ? "未能读取到身份证信息，请重新刷卡"
                 : "请将身份证放置在读卡器感应区，系统将自动读取身份证信息"
             }}
           </p>

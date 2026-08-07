@@ -16,6 +16,9 @@ const passwordError = ref('')
 const passwordInputRef = ref<HTMLInputElement | null>(null)
 
 const draftUrl = ref('')
+const autoLaunchEnabled = ref(false)
+const autoLaunchSupported = ref(true)
+const autoLaunchHint = ref('')
 const saving = ref(false)
 const errorMessage = ref('')
 
@@ -78,12 +81,40 @@ function handleVerifyPassword() {
   authVisible.value = false
   clearPasswordInput()
   passwordError.value = ''
-  openSettings()
+  void openSettings()
 }
 
-function openSettings() {
+async function openSettings() {
   draftUrl.value = getApiBaseURL()
   errorMessage.value = ''
+  autoLaunchEnabled.value = false
+  autoLaunchSupported.value = true
+  autoLaunchHint.value = ''
+
+  if (window.qms?.getAutoLaunch) {
+    try {
+      const result = await window.qms.getAutoLaunch()
+      autoLaunchEnabled.value = Boolean(result?.enabled)
+      autoLaunchSupported.value = result?.supported !== false
+      autoLaunchHint.value = String(result?.message || '')
+    } catch (error) {
+      console.warn('[QMS] 读取开机启动状态失败', error)
+    }
+  }
+
+  // 主进程未重启时也能识别：Electron 开发页（Vite）在 macOS 上无法写登录项
+  if (
+    window.qms?.platform === 'darwin' &&
+    /^https?:$/i.test(window.location.protocol) &&
+    (window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === 'localhost')
+  ) {
+    autoLaunchSupported.value = false
+    autoLaunchEnabled.value = false
+    autoLaunchHint.value =
+      '当前为 macOS 开发模式，系统不允许写入登录项。请使用签名打包后的应用，或到 Linux 终端机上设置。'
+  }
+
   settingsVisible.value = true
 }
 
@@ -101,6 +132,23 @@ async function handleSave() {
 
   try {
     await saveApiBaseUrl(draftUrl.value)
+
+    if (window.qms?.setAutoLaunch && autoLaunchSupported.value) {
+      const wanted = autoLaunchEnabled.value
+      const result = await window.qms.setAutoLaunch(wanted)
+      autoLaunchEnabled.value = Boolean(result?.enabled)
+
+      if (Boolean(result?.enabled) !== wanted) {
+        const platform = String(window.qms?.platform || '')
+        throw new Error(
+          result?.message ||
+            (platform === 'darwin'
+              ? '开机启动未生效：当前是 macOS 开发模式，系统禁止写入登录项。请到 Linux 终端机或签名打包后的应用上再开此选项。'
+              : '开机启动设置未生效，请检查系统权限后重试'),
+        )
+      }
+    }
+
     settingsVisible.value = false
     window.location.reload()
   } catch (error) {
@@ -219,9 +267,30 @@ async function handleSave() {
         <p v-if="errorMessage" class="mb-4 text-left text-sm text-red-600">
           {{ errorMessage }}
         </p>
-        <p v-else class="mb-6 text-left text-xs text-gray-400">
-          示例：http://192.168.0.101:18084/api
+        <p v-else class="mb-4 text-left text-xs text-gray-400">
+          本机联调可用 http://127.0.0.1:18084/api；局域网请填实际 IP
         </p>
+
+        <label
+          class="mb-6 flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-200 px-4 py-3 text-left"
+          :class="{ 'cursor-not-allowed opacity-60': !autoLaunchSupported }"
+        >
+          <input
+            v-model="autoLaunchEnabled"
+            type="checkbox"
+            class="h-5 w-5 accent-primary"
+            :disabled="!autoLaunchSupported"
+          />
+          <span>
+            <span class="block font-medium text-gray-800">开机自动启动</span>
+            <span class="block text-xs text-gray-500">
+              {{
+                autoLaunchHint ||
+                '登录桌面后自动打开报到取号'
+              }}
+            </span>
+          </span>
+        </label>
 
         <div class="flex gap-3">
           <button

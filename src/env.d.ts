@@ -53,6 +53,16 @@ interface QmsBridge {
   toggleDevtools(): Promise<boolean>
   openExternal(url: string): Promise<boolean>
   quitApp(): Promise<boolean>
+  getAutoLaunch(): Promise<{
+    enabled: boolean
+    supported?: boolean
+    message?: string
+  }>
+  setAutoLaunch(enabled: boolean): Promise<{
+    enabled: boolean
+    supported?: boolean
+    message?: string
+  }>
 }
 
 interface Window {
